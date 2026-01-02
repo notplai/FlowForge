@@ -11,14 +11,14 @@ import CodeEditor from './CodeEditor';
 const idEq = (a, b) => String(a) === String(b);
 
 const NODE_DOCS = {
-    exampleTest: "A example node box.",
+    // exampleTest: "A example node box.",
 
     onStart: "It'll start auto when instance online, it's execute once time only.",
     onClick: "Triggered when the user clicks on this node.",
 
     functionBlock: "Execute custom code in Python or JavaScript.",
 
-    sleep: "Pauses the execution for a specified amount of time.",
+    wait: "Pauses the execution for a specified amount of time.",
     not: "Inverts the boolean value of the input.",
     or: "Proceeds if any of the incoming connections complete.",
 
@@ -275,8 +275,8 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
             // If a node is sleeping on backend, we set a local timeout to trigger its output when done.
             if (workflow.runtime.processingNodes) {
                 workflow.runtime.processingNodes.forEach(p => {
-                    if (p.type === 'sleep' && p.remainingTime > 0) {
-                        // Set a timeout to trigger the signal locally when the backend sleep finishes
+                    if (p.type === 'wait' && p.remainingTime > 0) {
+                        // Set a timeout to trigger the signal locally when the backend wait finishes
                         setTimeout(() => {
                             // We use a function ref or similar if we needed latest state, 
                             // but here we assume nodes/connections don't change drastically during this wait.
@@ -529,7 +529,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                         };
 
                                         if (isSync) {
-                                            fetch(`http://localhost:3001/api/workflows/${workflow.id}/execute-node`, {
+                                            fetch(`http://server:3001/api/workflows/${workflow.id}/execute-node`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify(requestBody)
@@ -542,7 +542,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                 })
                                                 .catch(err => console.error('Function block error:', err));
                                         } else {
-                                            fetch(`http://localhost:3001/api/workflows/${workflow.id}/execute-node`, {
+                                            fetch(`http://server:3001/api/workflows/${workflow.id}/execute-node`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify(requestBody)
@@ -551,7 +551,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                             setTimeout(() => triggerSignal(targetNode.id, contextNode?.id), 0);
                                         }
                                     }
-                                } else if (targetNode.type === 'sleep') {
+                                } else if (targetNode.type === 'wait') {
                                     setTimeout(() => {
                                         triggerSignal(targetNode.id, contextNode?.id);
                                     }, targetNode.sleepTime || 1000);
@@ -837,7 +837,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                     });
                                 }
                             }
-                        } else if (node.type === 'sleep' || node.type === 'functionBlock') {
+                        } else if (node.type === 'wait' || node.type === 'functionBlock') {
                         } else {
                             // If this node has upstream signal, it fires downstream
                             if (hasInput) {
@@ -992,7 +992,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
             };
 
             try {
-                await fetch('http://localhost:3001/api/nodes', {
+                await fetch('http://server:3001/api/nodes', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(updatedNode)
@@ -1345,11 +1345,11 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
             }
         }
 
-        if (type === 'exampleTest') label = 'Example Node';
+        // if (type === 'exampleTest') label = 'Example Node';
 
-        else if (type === 'onStart') label = 'OnStart';
+        if (type === 'onStart') label = 'OnStart';
         else if (type === 'onClick') label = 'OnClick';
-        else if (type === 'sleep') label = 'Sleep Node';
+        else if (type === 'wait') label = 'Wait';
         else if (type === 'functionBlock') label = 'Function Block';
 
         else if (type === 'input') label = 'Input';
@@ -1365,7 +1365,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
             type,
             label,
             ...(type === 'functionBlock' ? { code: '', language: 'javascript', synchronize: true } : {}),
-            ...(type === 'sleep' ? { sleepTime: 1000 } : {}),
+            ...(type === 'wait' ? { sleepTime: 1000 } : {}),
             ...customData
         };
         setNodes([...nodes, newNode]);
@@ -1447,9 +1447,9 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                 language: node.language || 'javascript',
                 synchronize: node.synchronize !== undefined ? node.synchronize : true
             });
-        } else if (node.type === 'sleep') {
+        } else if (node.type === 'wait') {
             setEditModal({
-                type: 'sleep-editor',
+                type: 'wait-editor',
                 id,
                 sleepTime: node.sleepTime || 1000
             });
@@ -2415,7 +2415,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                 synchronize: node.synchronize !== false,
                                                 codeLength: (node.code || '').length
                                             }),
-                                            ...(node.type === 'sleep' && {
+                                            ...(node.type === 'wait' && {
                                                 sleepTime: node.sleepTime || 1000
                                             }),
                                             ...(node.type === 'custom' && {
@@ -2560,7 +2560,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                             </>
                                         ) : node.type === 'custom' ? (
                                             null
-                                        ) : node.type === 'sleep' ? (
+                                        ) : node.type === 'wait' ? (
                                             `sleeping for ${node.sleepTime || 1000} milliseconds`
                                         ) : (['input', 'output', 'onStart', 'onClick', 'not', 'or'].includes(node.type)) ? (
                                             null
@@ -2616,14 +2616,13 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                             >
                                 {type !== 'input' && type !== 'output' && (
                                     <div className="node-header">
-                                        {type === 'exampleTest' ? 'Example Node' :
-                                            type === 'onStart' ? 'OnStart' :
-                                                type === 'onClick' ? 'OnClick' :
-                                                    type === 'sleep' ? 'Sleep Node' :
-                                                        type === 'functionBlock' ? 'Function Block' :
-                                                            type === 'not' ? 'NOT Node' :
-                                                                type === 'or' ? 'OR Node' :
-                                                                    type === 'custom' ? (template?.name || 'Custom Node') : 'Node'}
+                                        {type === 'onStart' ? 'OnStart' :
+                                            type === 'onClick' ? 'OnClick' :
+                                                type === 'wait' ? 'Wait' :
+                                                    type === 'functionBlock' ? 'Function Block' :
+                                                        type === 'not' ? 'NOT Node' :
+                                                            type === 'or' ? 'OR Node' :
+                                                                type === 'custom' ? (template?.name || 'Custom Node') : 'Node'}
                                     </div>
                                 )}
                                 {(type === 'input' || type === 'output') && (
@@ -2696,7 +2695,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                     {/* Content */}
                                     <div className="node-content">
                                         {type === 'functionBlock' ? 'JavaScript' :
-                                            type === 'sleep' ? 'sleeping for 1000 milliseconds' :
+                                            type === 'wait' ? 'sleeping for 1000 milliseconds' :
                                                 type === 'exampleTest' ? 'Content' :
                                                     ''}
                                     </div>
@@ -2837,7 +2836,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                     {node.language === 'javascript' ? 'JavaScript' : 'Python'}
                                                     {!node.synchronize && <span className="async-tag"> (async node)</span>}
                                                 </>
-                                            ) : node.type === 'sleep' ? (
+                                            ) : node.type === 'wait' ? (
                                                 `sleeping for ${node.sleepTime || 1000} milliseconds`
                                             ) : (node.type === 'input' || node.type === 'output') ? (
                                                 ''
@@ -3073,7 +3072,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                         {editModal.type === 'comment-title' && 'Rename Comment'}
                                         {editModal.type === 'comment-desc' && 'Edit Comment Description'}
                                         {editModal.type === 'function-editor' && 'Edit Function Block'}
-                                        {editModal.type === 'sleep-editor' && 'Edit Sleep Node'}
+                                        {editModal.type === 'wait-editor' && 'Edit Wait'}
                                         {editModal.type === 'create-custom-node' && 'Create Custom Node'}
                                     </h3>
                                     <button className="modal-close" onClick={() => setEditModal(null)}>✕</button>
@@ -3134,9 +3133,9 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                 </div>
                                             )}
                                         </div>
-                                    ) : editModal.type === 'sleep-editor' ? (
+                                    ) : editModal.type === 'wait-editor' ? (
                                         <div className="form-group">
-                                            <label>Sleep Duration (ms):</label>
+                                            <label>Wait Duration (ms):</label>
                                             <input
                                                 type="number"
                                                 min="0"
@@ -3227,7 +3226,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                     language: editModal.language,
                                                     synchronize: editModal.synchronize
                                                 } : n));
-                                            } else if (editModal.type === 'sleep-editor') {
+                                            } else if (editModal.type === 'wait-editor') {
                                                 setNodes(nodes.map(n => n.id === editModal.id ? {
                                                     ...n,
                                                     sleepTime: editModal.sleepTime
@@ -3314,9 +3313,9 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                             }
                                                             return response.json();
                                                         })
-                                                        .then(data => {
-                                                            // console.log('Custom node saved:', data);
-                                                        })
+                                                        // .then(data => {
+                                                        //     console.log('Custom node saved:', data);
+                                                        // })
                                                         .catch(error => {
                                                             console.error('Error saving custom node:', error);
                                                             alert('Failed to save custom node to server');
@@ -3422,7 +3421,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                         </div>
                                     </div>
                                 ))}
-                                <div
+                                {/* <div
                                     className="node"
                                     draggable
                                     style={{ position: 'relative', cursor: 'grab' }}
@@ -3455,7 +3454,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                         </div>
                                         <div className="node-content">Content</div>
                                     </div>
-                                </div>
+                                </div> */}
 
                                 <div
                                     className="node onStart"
@@ -3517,18 +3516,18 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                     className="node"
                                     draggable
                                     style={{ position: 'relative', cursor: 'grab' }}
-                                    onMouseEnter={(e) => handleDocHover(e, 'sleep')}
+                                    onMouseEnter={(e) => handleDocHover(e, 'wait')}
                                     onMouseLeave={handleDocLeave}
-                                    onDragStart={(e) => handleSidebarDragStart(e, 'sleep')}
+                                    onDragStart={(e) => handleSidebarDragStart(e, 'wait')}
                                     onDragEnd={(e) => {
                                         setSidebarDragType(null);
                                         const currentSidebarWidth = sidebarCollapsed ? 40 : sidebarWidth;
                                         if (e.clientX > window.innerWidth - currentSidebarWidth) return;
                                         const worldPos = screenToWorld(e.clientX - (100 * view.zoom), e.clientY - (20 * view.zoom));
-                                        addNode(worldPos.x, worldPos.y, 'sleep');
+                                        addNode(worldPos.x, worldPos.y, 'wait');
                                     }}
                                 >
-                                    <div className="node-header">Sleep Node</div>
+                                    <div className="node-header">Wait</div>
                                     <div className="node-body">
                                         <div className="node-ports-row">
                                             <div className="node-io-section inputs">
@@ -4112,7 +4111,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                             </div>
                                         </>
                                     )}
-                                    {/* Sleep Node specific info */}
+                                    {/* Wait specific info */}
                                     {hoverDoc.debugInfo.sleepTime !== undefined && (
                                         <>
                                             <div style={{ borderTop: '1px solid #444', marginTop: '6px', paddingTop: '6px' }}></div>

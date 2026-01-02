@@ -1,9 +1,8 @@
 services:
-  frontend:
+  web:
     build:
       context: .
-      dockerfile: docker/Dockerfile
-      network: host
+      dockerfile: docker/Dockerfile.web
     container_name: flowforge-frontend
     ports:
       - "80:80"
@@ -15,7 +14,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.server
-      network: host
     container_name: flowforge-server
     ports:
       - "3001:3001"

@@ -264,7 +264,7 @@ class WorkflowEngine {
 
         // Handle different node types
         switch (node.type) {
-            case 'sleep':
+            case 'wait':
             case 'delay': {
                 const delayTime = node.sleepTime || node.data?.delay || 1000;
                 // console.log(`${node.type} node ${node.id} waiting for ${delayTime}ms`);

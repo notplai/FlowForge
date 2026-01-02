@@ -7,7 +7,7 @@ export const NODE_DOCS = {
     onStart: "It'll start auto when instance online, it's execute once time only.",
     onClick: "Triggered when the user clicks on this node.",
     functionBlock: "Execute custom code in Python or JavaScript.",
-    sleep: "Pauses the execution for a specified amount of time.",
+    wait: "Pauses the execution for a specified amount of time.",
     not: "Inverts the boolean value of the input.",
     or: "Proceeds if any of the incoming connections complete.",
     input: "Taked multi-input from wire.",
@@ -107,8 +107,8 @@ export function calculateNodeLatency(node) {
         const functionBlocks = internalNodes.filter(n => n.type === 'functionBlock');
         totalDelay += functionBlocks.length * 2;
 
-        // Sleep nodes add their configured delay
-        const sleepNodes = internalNodes.filter(n => n.type === 'sleep');
+        // Wait nodes add their configured delay
+        const sleepNodes = internalNodes.filter(n => n.type === 'wait');
         sleepNodes.forEach(n => {
             totalDelay += (n.sleepTime || 1000);
         });

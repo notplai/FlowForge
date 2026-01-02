@@ -53,7 +53,7 @@ function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onO
 
     const fetchCustomNodes = () => {
         // Fetch custom nodes from server
-        fetch('http://localhost:3001/api/nodes')
+        fetch('http://server:3001/api/nodes')
             .then(res => res.json())
             .then(data => {
                 setCustomNodes(data);
@@ -104,8 +104,8 @@ function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onO
                 const functionBlocks = internalNodes.filter(n => n.type === 'functionBlock');
                 totalDelay += functionBlocks.length * 2;
 
-                // Sleep nodes add their configured delay
-                const sleepNodes = internalNodes.filter(n => n.type === 'sleep');
+                // Wait nodes add their configured delay
+                const sleepNodes = internalNodes.filter(n => n.type === 'wait');
                 sleepNodes.forEach(n => {
                     totalDelay += (n.sleepTime || 1000);
                 });
@@ -284,7 +284,7 @@ function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onO
             const node = customNodes.find(n => n.id === nodeId);
             const updatedNode = { ...node, name, description, category };
 
-            await fetch(`http://localhost:3001/api/nodes`, {
+            await fetch(`http://server:3001/api/nodes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updatedNode)
@@ -327,7 +327,7 @@ function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onO
                 name: `${baseName} ${nextNumber}`
             };
 
-            await fetch('http://localhost:3001/api/nodes', {
+            await fetch('http://server:3001/api/nodes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newNode)
@@ -347,7 +347,7 @@ function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onO
         setActiveCustomNodeMenuId(null);
 
         try {
-            await fetch(`http://localhost:3001/api/nodes/${nodeId}`, {
+            await fetch(`http://server:3001/api/nodes/${nodeId}`, {
                 method: 'DELETE'
             });
             fetchCustomNodes();
