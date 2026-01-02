@@ -1,0 +1,22 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      network: host
+    container_name: flowforge-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+      network: host
+    container_name: flowforge-server
+    ports:
+      - "3001:3001"
+    restart: unless-stopped

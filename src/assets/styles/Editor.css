@@ -1,0 +1,1268 @@
+/* Editor Styles */
+.editor-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.editor-header {
+    height: 60px;
+    background-color: white;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+    z-index: 10;
+}
+
+.app-container.dark .editor-header {
+    background-color: #242424;
+    border-bottom: 1px solid #333;
+}
+
+.back-btn {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    cursor: pointer;
+    color: #666;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+.back-btn:hover {
+    background-color: #f0f0f0;
+}
+
+.app-container.dark .back-btn {
+    color: #aaa;
+}
+
+.app-container.dark .back-btn:hover {
+    background-color: #333;
+}
+
+.editor-body {
+    flex: 1;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+}
+
+.editor-canvas {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+}
+
+.editor-canvas:active {
+    cursor: grabbing;
+}
+
+.blueprint-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #f0f0f0;
+    background-image: radial-gradient(#ccc 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.app-container.dark .blueprint-bg {
+    background-color: #1a1a1a;
+    background-image: radial-gradient(#333 1px, transparent 1px);
+}
+
+.connections-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+    overflow: visible;
+}
+
+.node {
+    position: absolute;
+    width: 200px;
+    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    z-index: 2;
+    user-select: none;
+}
+
+.app-container.dark .node {
+    background: rgba(44, 44, 44, 0.65);
+    border-color: #444;
+    color: #f0f0f0;
+}
+
+.node.deleting {
+    border-color: #ff4444;
+    background-color: #ffe6e6;
+    animation: shake 0.5s cubic-bezier(.36, .07, .19, .97) both infinite;
+}
+
+.app-container.dark .node.deleting {
+    background-color: #4a1a1a;
+    border-color: #ff4444;
+}
+
+.node-delete-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 68, 68, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    border-radius: 4px;
+}
+
+@keyframes shake {
+
+    10%,
+    90% {
+        transform: translate3d(-1px, 0, 0);
+    }
+
+    20%,
+    80% {
+        transform: translate3d(2px, 0, 0);
+    }
+
+    30%,
+    50%,
+    70% {
+        transform: translate3d(-4px, 0, 0);
+    }
+
+    40%,
+    60% {
+        transform: translate3d(4px, 0, 0);
+    }
+}
+
+.node-header {
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+    border-radius: 4px 4px 0 0;
+    cursor: grab;
+}
+
+.node-header:active {
+    cursor: grabbing;
+}
+
+.app-container.dark .node-header {
+    background: #333;
+    border-bottom-color: #444;
+}
+
+.node-body {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.node-ports-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    width: 100%;
+}
+
+.node-io-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.io-port-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 20px;
+}
+
+.io-port-wrapper.right {
+    justify-content: flex-end;
+}
+
+.io-label {
+    font-size: 12px;
+    color: #666;
+}
+
+.app-container.dark .io-label {
+    color: #aaa;
+}
+
+.node-port {
+    width: 14px;
+    height: 14px;
+    /* Removed absolute positioning */
+    cursor: pointer;
+    flex-shrink: 0;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.node-port:hover {
+    transform: scale(1.2);
+}
+
+.node-port.input {
+    background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 3L12 13L4 8L12 3Z" fill="%23ff4444" stroke="%23ff4444" stroke-width="1" stroke-linejoin="round"/></svg>');
+}
+
+.node-port.output {
+    background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3L4 13L12 8L4 3Z" fill="%23888888" stroke="%23888888" stroke-width="1" stroke-linejoin="round"/></svg>');
+}
+
+.editor-sidebar {
+    width: 280px;
+    position: relative;
+    background: white;
+    border-left: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s;
+    z-index: 5;
+}
+
+.app-container.dark .editor-sidebar {
+    background: #242424;
+    border-left: 1px solid #333;
+}
+
+.editor-sidebar.collapsed {
+    width: 40px;
+}
+
+.collapse-btn {
+    padding: 10px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    text-align: left;
+    color: #666;
+}
+
+.app-container.dark .collapse-btn {
+    border-bottom-color: #333;
+    color: #aaa;
+}
+
+.sidebar-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.tool-item {
+    padding: 10px;
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    cursor: grab;
+}
+
+.tool-item:active {
+    cursor: grabbing;
+}
+
+.app-container.dark .tool-item {
+    background: #333;
+    border-color: #444;
+}
+
+.context-menu {
+    position: absolute;
+    background: white;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    padding: 5px 0;
+    z-index: 100;
+    min-width: 150px;
+}
+
+.app-container.dark .context-menu {
+    background: #2c2c2c;
+    border-color: #444;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.context-menu div {
+    padding: 8px 15px;
+    cursor: pointer;
+}
+
+.context-menu div:hover {
+    background-color: #f0f0f0;
+}
+
+.app-container.dark .context-menu div:hover {
+    background-color: #333;
+}
+
+/* Comment Block Styles */
+.comment-block {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.5);
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    z-index: 0;
+    /* Behind connections (1) and nodes (2) */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 150px;
+    min-height: 100px;
+    pointer-events: auto;
+}
+
+.app-container.dark .comment-block {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: #555;
+}
+
+.comment-header {
+    padding: 10px;
+    cursor: grab;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.comment-header:active {
+    cursor: grabbing;
+}
+
+.comment-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.comment-block:hover .comment-header {
+    opacity: 1;
+}
+
+.comment-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, #ccc 50%);
+}
+
+.app-container.dark .comment-resize-handle {
+    background: linear-gradient(135deg, transparent 50%, #555 50%);
+}
+
+.node-sublabel {
+    font-size: 0.8em;
+    color: #888;
+    font-weight: normal;
+    margin-top: 2px;
+}
+
+.comment-tooltip {
+    position: absolute;
+    background: white;
+    color: #111;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    width: max-content;
+    max-width: 480px;
+    min-width: 120px;
+    z-index: 50;
+    pointer-events: none;
+}
+
+.app-container.dark .comment-tooltip {
+    background: #2c2c2c;
+    color: #eee;
+    border-color: #444;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.comment-tooltip .tooltip-title {
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.comment-tooltip .tooltip-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.comment-tooltip .tooltip-body code {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.app-container.dark .comment-tooltip .tooltip-body code {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Modal */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+}
+
+.modal {
+    background: white;
+    color: #111;
+    border-radius: 10px;
+    min-width: 320px;
+    max-width: 800px;
+    width: 100%;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.app-container.dark .modal {
+    background: #1f1f1f;
+    color: #f0f0f0;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    cursor: pointer;
+    color: inherit;
+}
+
+.modal-body input,
+.modal-body textarea,
+.modal-body select {
+    width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 1rem;
+    background: #fafafa;
+    color: #111;
+}
+
+.modal-body input[type="checkbox"],
+.modal-body input[type="radio"] {
+    width: auto;
+    padding: 0;
+}
+
+.modal-body textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+.modal-body select.category-select {
+    padding: 10px 5%;
+}
+
+.app-container.dark .modal-body input,
+.app-container.dark .modal-body textarea,
+.app-container.dark .modal-body select {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #f0f0f0;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.modal-footer button {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: #f5f5f5;
+    cursor: pointer;
+}
+
+.modal-footer .primary {
+    background: #646cff;
+    color: white;
+    border-color: #646cff;
+}
+
+.app-container.dark .modal-footer button {
+    background: #2f2f2f;
+    border-color: #444;
+}
+
+.app-container.dark .modal-footer .primary {
+    background: #7a7fff;
+    border-color: #7a7fff;
+    color: #0f0f0f;
+}
+
+/* Special Node Types */
+.node.input,
+.node.output {
+    width: 120px;
+}
+
+.node.onStart,
+.node.onClick,
+.node.not,
+.node.or {
+    width: 150px;
+}
+
+.node.onStart .node-port,
+.node.onClick .node-port,
+.node.not .node-port,
+.node.or .node-port {
+    top: 50%;
+}
+
+.node.onStart {
+    border-radius: 25px;
+    border: 2px solid #2ecc71;
+}
+
+.node.onStart .node-header {
+    background-color: #e8f8f5;
+    border-radius: 23px 23px 0 0;
+}
+
+.app-container.dark .node.onStart .node-header {
+    background-color: #1e3a2f;
+}
+
+.node.onClick {
+    border-radius: 0 40px 40px 0;
+    border: 2px solid #3498db;
+}
+
+.node.onClick .node-header {
+    background-color: #ebf5fb;
+    border-radius: 0 38px 0 0;
+}
+
+.app-container.dark .node.onClick .node-header {
+    background-color: #1a2f3a;
+}
+
+.node.onStart .node-delete-overlay {
+    border-radius: 23px;
+}
+
+.node.onClick .node-delete-overlay {
+    border-radius: 0 38px 38px 0;
+}
+
+/* Removed circular styling for input/output nodes */
+
+.node.input {
+    border: 2px solid #e67e22;
+    background-color: rgba(252, 243, 207, 0.65);
+}
+
+.node.output {
+    border: 2px solid #e74c3c;
+    background-color: rgba(250, 219, 216, 0.65);
+}
+
+.app-container.dark .node.input {
+    background-color: rgba(58, 42, 26, 0.65);
+}
+
+.app-container.dark .node.output {
+    background-color: rgba(58, 26, 26, 0.65);
+}
+
+
+
+.doc-tooltip {
+    position: fixed;
+    background: white;
+    color: #333;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    max-width: 250px;
+    z-index: 10000;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    line-height: 1.4;
+    border: 1px solid #ddd;
+}
+
+.app-container.dark .doc-tooltip {
+    background: #252526;
+    color: #eee;
+    border: 1px solid #454545;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.node.functionBlock {
+    border: 2px solid #9b59b6;
+}
+
+.node.functionBlock .node-header {
+    background-color: #f4ecf7;
+    color: #8e44ad;
+}
+
+.app-container.dark .node.functionBlock .node-header {
+    background-color: #2c1e31;
+    color: #d2b4de;
+}
+
+/* Code Editor Modal */
+.code-editor-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-group label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.radio-group {
+    display: flex;
+    gap: 15px;
+}
+
+.radio-group label {
+    font-weight: normal;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.code-input {
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    border-radius: 0 4px 4px 0;
+    border: 1px solid #333;
+    border-left: none;
+    min-height: 200px;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+/* Remove default text selection highlight */
+.code-input::selection {
+    background: transparent !important;
+    color: inherit !important;
+}
+
+.code-input::-moz-selection {
+    background: transparent !important;
+    color: inherit !important;
+}
+
+.code-editor-wrapper::selection,
+.code-line-numbers::selection {
+    background: transparent !important;
+    color: inherit !important;
+}
+
+.code-editor-wrapper::-moz-selection,
+.code-line-numbers::-moz-selection {
+    background: transparent !important;
+    color: inherit !important;
+}
+
+.app-container.dark .code-input {
+    border-color: #444;
+}
+
+/* Code Editor Wrapper */
+.code-editor-wrapper {
+    display: flex;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #333;
+    min-height: 200px;
+    resize: vertical;
+    position: relative;
+    background-color: #1e1e1e;
+}
+
+.app-container.light .code-editor-wrapper {
+    background-color: #ffffff;
+}
+
+.app-container.dark .code-editor-wrapper {
+    border-color: #444;
+}
+
+.code-editor-wrapper .code-input {
+    border: none;
+    border-radius: 0;
+    min-height: unset;
+    background: transparent;
+}
+
+/* Line Numbers */
+.code-line-numbers {
+    box-sizing: border-box;
+}
+
+.async-tag {
+    color: #666;
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+.app-container.dark .async-tag {
+    color: #aaa;
+}
+
+/* Disabled Node Styles */
+.node.disabled {
+    background-color: #f0f0f0;
+    border-color: #bbb;
+    opacity: 0.9;
+    color: #888;
+}
+
+.app-container.dark .node.disabled {
+    background-color: #2a2a2a;
+    border-color: #444;
+    color: #777;
+}
+
+.node.disabled .node-header {
+    background-color: #e0e0e0;
+    color: #777;
+}
+
+.app-container.dark .node.disabled .node-header {
+    background-color: #333;
+    color: #888;
+}
+
+/* Locked Node Styles */
+.node.locked {
+    border-color: #e74c3c;
+    box-shadow: 0 0 0 1px #e74c3c;
+}
+
+/* Status Icon Overlay */
+.node-status-icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 15;
+    pointer-events: none;
+    opacity: 0.6;
+    color: #555;
+}
+
+.app-container.dark .node-status-icon {
+    color: #aaa;
+}
+
+.node.locked .node-status-icon {
+    color: #e74c3c;
+    opacity: 0.3;
+}
+
+/* Header-only nodes (NOT, OR) */
+.node.not .node-header,
+.node.or .node-header {
+    border-radius: 4px;
+    border-bottom: none;
+}
+
+/* Tool Switcher Styles */
+.tool-switcher {
+    display: flex;
+    gap: 8px;
+    padding: 6px;
+    background: #2b2b2b;
+    border-radius: 8px;
+    pointer-events: auto;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.tool-option {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid transparent;
+}
+
+.tool-option:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+.tool-option.active {
+    background: #3498db;
+    border-color: #2980b9;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.tool-option img {
+    width: 20px;
+    height: 20px;
+    filter: invert(1);
+    opacity: 0.8;
+}
+
+.tool-option.active img {
+    opacity: 1;
+    filter: brightness(0) invert(1);
+}
+
+/* Floating Menu (CTRL) */
+.floating-tool-menu {
+    position: fixed;
+    z-index: 10000;
+    transform: translate(-50%, -50%);
+    animation: popIn 0.1s ease-out;
+}
+
+@keyframes popIn {
+    from {
+        transform: translate(-50%, -50%) scale(0.8);
+        opacity: 0;
+    }
+
+    to {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+}
+
+/* Context Menu Integration */
+.context-menu-wrapper {
+    position: absolute;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.context-menu {
+    position: static;
+    /* Override fixed positioning */
+    /* ... other styles inherited from .context-menu definition elsewhere? */
+    /* We need to check where .context-menu is defined to ensure we don't break it */
+}
+
+.context-tools {
+    /* background: #2b2b2b; Removed background */
+    border-radius: 8px;
+    padding: 6px;
+    /* box-shadow: 0 2px 8px rgba(0,0,0,0.2); Removed shadow */
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.context-tools .tool-option {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+    border: 1px solid transparent;
+}
+
+.context-tools .tool-option:hover {
+    background: rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+}
+
+.context-tools .tool-option.active {
+    background: #3498db;
+    border-color: #2980b9;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.context-tools .tool-option img {
+    width: 20px;
+    height: 20px;
+    filter: none;
+    opacity: 0.7;
+}
+
+.context-tools .tool-option.active img {
+    opacity: 1;
+    filter: brightness(0) invert(1);
+}
+
+/* Dark Theme Overrides for Context Tools */
+.app-container.dark .context-tools .tool-option {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.app-container.dark .context-tools .tool-option:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.app-container.dark .context-tools .tool-option img {
+    filter: invert(1);
+    opacity: 0.8;
+}
+
+.app-container.dark .context-tools .tool-option.active img {
+    opacity: 1;
+    filter: brightness(0) invert(1);
+}
+
+/* Floating Tool Menu */
+.tool-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 5px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tool-menu .tool-option {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+}
+
+.tool-menu .tool-option:hover {
+    background: #f0f0f0;
+}
+
+.tool-menu .tool-option.active {
+    background: #3498db;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.tool-menu .tool-option img {
+    width: 24px;
+    height: 24px;
+    filter: none;
+    opacity: 0.7;
+}
+
+.tool-menu .tool-option.active img {
+    opacity: 1;
+    filter: brightness(0) invert(1);
+}
+
+/* Dark Theme for Floating Tool Menu */
+.app-container.dark .tool-menu {
+    background: #252526;
+    border-color: #454545;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.app-container.dark .tool-menu .tool-option:hover {
+    background: #37373d;
+}
+
+.app-container.dark .tool-menu .tool-option.active {
+    background: #3498db;
+}
+
+.app-container.dark .tool-menu .tool-option img {
+    filter: invert(1);
+    opacity: 0.8;
+}
+
+.app-container.dark .tool-menu .tool-option.active img {
+    opacity: 1;
+    filter: brightness(0) invert(1);
+}
+
+/* Selected Node Style */
+.node.selected {
+    border: 2px solid #9b59b6;
+    box-shadow: 0 0 0 2px rgba(155, 89, 182, 0.3);
+}
+
+.app-container.dark .node.selected {
+    border-color: #9b59b6;
+    box-shadow: 0 0 0 2px rgba(155, 89, 182, 0.3);
+}
+
+/* Sidebar Resize Handle */
+.editor-sidebar.resizing {
+    transition: none;
+    user-select: none;
+}
+
+.sidebar-resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    /* Slightly wider for easier grabbing */
+    cursor: ew-resize;
+    z-index: 100;
+    background: transparent;
+    transform: translateX(-50%);
+    /* Center on the border */
+}
+
+.sidebar-resize-handle:hover,
+.editor-sidebar.resizing .sidebar-resize-handle {
+    background: rgba(33, 150, 243, 0.3);
+}
+
+/* Sidebar Tools Grid */
+.tools-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: flex-start;
+}
+
+.tools-grid .node {
+    margin-bottom: 0 !important;
+    /* Override inline style if present, though we removed it */
+    flex-shrink: 0;
+}
+
+/* Custom Scrollbar for Sidebar */
+.sidebar-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* Default state: transparent thumb (hidden) */
+.sidebar-content::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 3px;
+}
+
+/* Hover state: visible thumb */
+.editor-sidebar:hover .sidebar-content::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Dark Mode Hover state */
+.app-container.dark .editor-sidebar:hover .sidebar-content::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Custom Node Preview Styles */
+.custom-node-preview {
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-header {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.preview-desc {
+    font-size: 0.9em;
+    color: #666;
+    /* Light mode text */
+    margin-bottom: 8px;
+}
+
+.app-container.dark .preview-desc {
+    color: #aaa;
+    /* Dark mode text */
+}
+
+.preview-canvas {
+    position: relative;
+    width: 300px;
+    height: 200px;
+    background: #f0f0f0;
+    /* Light mode canvas (for Dark App/Light Tooltip?) No, canvas should match the "world" inside */
+    /* Actually, if it's an X-Ray, it should probably look like the editor theme */
+
+    /* Let's make the canvas match the APP theme, not the tooltip theme */
+    background: #f0f0f0;
+    overflow: hidden;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    background-image: radial-gradient(#ccc 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.app-container.dark .preview-canvas {
+    background: #1e1e1e;
+    border: 1px solid #444;
+    background-image: radial-gradient(#333 1px, transparent 1px);
+}
+
+.preview-node {
+    position: absolute;
+    background: white;
+    border: 1px solid #999;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #333;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.app-container.dark .preview-node {
+    background: #333;
+    border: 1px solid #555;
+    color: #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.preview-connection {
+    stroke: #999;
+    stroke-width: 4;
+    fill: none;
+}
+
+.app-container.dark .preview-connection {
+    stroke: #555;
+}
+
+/* Save Notification */
+.save-notification {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 24px;
+    background: #444444;
+    color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    font-weight: 500;
+    z-index: 10000;
+    animation: slideUp 0.3s ease-out;
+}
+
+.app-container.dark .save-notification {
+    background: #143b17;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.save-notification img {
+    filter: brightness(0) invert(1);
+}
+
+@keyframes slideUp {
+    from {
+        bottom: 0;
+        opacity: 0;
+    }
+
+    to {
+        bottom: 30px;
+        opacity: 1;
+    }
+}
+
+/* Code Completions Popup Scrollbar */
+.code-completions-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.code-completions-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.code-completions-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-color, #5a5a5a);
+    border-radius: 4px;
+}
+
+.code-completions-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-hover-color, #7a7a7a);
+}

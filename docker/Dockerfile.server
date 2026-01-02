@@ -1,0 +1,14 @@
+FROM node:alpine
+
+RUN mkdir -p /usr/src/app
+WORKDIR /usr/src/app
+
+COPY package.json package-lock.json ./
+# RUN npm install cors express react react-dom
+RUN npm ci
+
+COPY server/ .
+
+EXPOSE 3001
+
+CMD ["node", "main.js"]
