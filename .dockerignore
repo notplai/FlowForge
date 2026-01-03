@@ -6,3 +6,5 @@ Dockerfile*
 docker/
 *.log
 .env
+
+server/data/**/*.json

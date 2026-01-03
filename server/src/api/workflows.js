@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import { CONTAINER_DIR } from '../config/path.js';
 import workflowEngine from '../engine/workflowEngine.js';
-
 const router = express.Router();
 
 // Helper to get file path
@@ -23,10 +22,15 @@ router.get('/', (req, res) => {
                     const content = fs.readFileSync(path.join(CONTAINER_DIR, file), 'utf-8');
                     const workflow = JSON.parse(content);
 
-                    // Add runtime info if workflow is running
+                    // Ensure we don't expose stale runtime data from the saved file.
+                    // If the engine is running, attach live runtime state, otherwise
+                    // make sure `runtime` is removed so the frontend uses the saved
+                    // status field and doesn't display stale runtime information.
                     if (workflowEngine.isRunning(workflow.id)) {
                         const state = workflowEngine.getWorkflowState(workflow.id);
                         workflow.runtime = state;
+                    } else {
+                        if (workflow.runtime) delete workflow.runtime;
                     }
 
                     return workflow;
@@ -80,10 +84,25 @@ router.put('/:id', (req, res) => {
 
         const oldPath = path.join(CONTAINER_DIR, existingFile);
         const oldContent = JSON.parse(fs.readFileSync(oldPath, 'utf-8'));
-        // const oldStatus = oldContent.status;
+        const oldStatus = oldContent.status;
 
         const newWorkflow = { ...oldContent, ...updates };
+
+        // Ensure runtime is not persisted to disk - runtime is a live property
+        // maintained by the engine, not part of the saved workflow configuration.
+        if (newWorkflow.runtime) delete newWorkflow.runtime;
+
+        // Normalize status: 'Idling' is a runtime state, not a saved state
+        // If status is 'Idling', treat it as 'Online' for saving purposes
+        if (newWorkflow.status === 'Idling') {
+            newWorkflow.status = 'Online';
+        }
         const newStatus = newWorkflow.status;
+
+        // Check if this is an explicit status change request
+        const isStatusChangeRequest = updates.status !== undefined;
+        const isRestartRequest = updates._restart === true;
+        delete newWorkflow._restart; // Remove internal flag before saving
 
         // If name changed, we need to rename the file
         if (updates.name && updates.name !== oldContent.name) {
@@ -94,22 +113,33 @@ router.put('/:id', (req, res) => {
             fs.writeFileSync(oldPath, JSON.stringify(newWorkflow, null, 2));
         }
 
-        // Handle workflow engine state changes - stop first if running, then start if needed
-        if (newStatus === 'Offline') {
-            // Always stop if status is Offline
-            if (workflowEngine.isRunning(id)) {
-                // console.log(`Stopping workflow ${id}`);
-                workflowEngine.stopWorkflow(id);
+        // Handle workflow engine state changes
+        // Only change running state if:
+        // 1. Explicit status change request (user clicked Start/Stop)
+        // 2. Restart request (user clicked Restart)
+        if (isStatusChangeRequest || isRestartRequest) {
+            if (newStatus === 'Offline') {
+                // Stop if status is Offline
+                if (workflowEngine.isRunning(id)) {
+                    workflowEngine.stopWorkflow(id);
+                }
+            } else if (newStatus === 'Online') {
+                if (isRestartRequest) {
+                    // Restart: stop then start with NEW workflow data
+                    if (workflowEngine.isRunning(id)) {
+                        workflowEngine.stopWorkflow(id);
+                    }
+                    workflowEngine.startWorkflow(id, newWorkflow);
+                } else if (!workflowEngine.isRunning(id)) {
+                    // Only start if not already running (explicit start request)
+                    workflowEngine.startWorkflow(id, newWorkflow);
+                }
+                // If already running and not restart, keep old instance running
             }
-        } else if (newStatus === 'Online') {
-            // Start or restart the workflow
-            if (workflowEngine.isRunning(id)) {
-                // console.log(`Restarting workflow ${id}`);
-                workflowEngine.stopWorkflow(id);
-            }
-            // console.log(`Starting workflow ${id}`);
-            workflowEngine.startWorkflow(id, newWorkflow);
         }
+        // If not a status change request (just saving), don't touch the running workflow
+
+        // No preview instances in this build - preview functionality removed
 
         // Add runtime info if workflow is running
         if (workflowEngine.isRunning(id)) {

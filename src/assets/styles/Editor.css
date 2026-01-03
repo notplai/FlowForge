@@ -531,6 +531,7 @@
     border: 1px solid #ccc;
     background: #f5f5f5;
     cursor: pointer;
+
 }
 
 .modal-footer .primary {
@@ -542,12 +543,13 @@
 .app-container.dark .modal-footer button {
     background: #2f2f2f;
     border-color: #444;
+    color: white;
 }
 
 .app-container.dark .modal-footer .primary {
     background: #7a7fff;
     border-color: #7a7fff;
-    color: #0f0f0f;
+    color: white;
 }
 
 /* Special Node Types */
@@ -557,14 +559,12 @@
 }
 
 .node.onStart,
-.node.onClick,
 .node.not,
 .node.or {
     width: 150px;
 }
 
 .node.onStart .node-port,
-.node.onClick .node-port,
 .node.not .node-port,
 .node.or .node-port {
     top: 50%;
@@ -584,26 +584,8 @@
     background-color: #1e3a2f;
 }
 
-.node.onClick {
-    border-radius: 0 40px 40px 0;
-    border: 2px solid #3498db;
-}
-
-.node.onClick .node-header {
-    background-color: #ebf5fb;
-    border-radius: 0 38px 0 0;
-}
-
-.app-container.dark .node.onClick .node-header {
-    background-color: #1a2f3a;
-}
-
 .node.onStart .node-delete-overlay {
     border-radius: 23px;
-}
-
-.node.onClick .node-delete-overlay {
-    border-radius: 0 38px 38px 0;
 }
 
 /* Removed circular styling for input/output nodes */
@@ -1133,81 +1115,7 @@
     background-color: rgba(255, 255, 255, 0.2);
 }
 
-/* Custom Node Preview Styles */
-.custom-node-preview {
-    display: flex;
-    flex-direction: column;
-}
-
-.preview-header {
-    font-weight: bold;
-    margin-bottom: 4px;
-}
-
-.preview-desc {
-    font-size: 0.9em;
-    color: #666;
-    /* Light mode text */
-    margin-bottom: 8px;
-}
-
-.app-container.dark .preview-desc {
-    color: #aaa;
-    /* Dark mode text */
-}
-
-.preview-canvas {
-    position: relative;
-    width: 300px;
-    height: 200px;
-    background: #f0f0f0;
-    /* Light mode canvas (for Dark App/Light Tooltip?) No, canvas should match the "world" inside */
-    /* Actually, if it's an X-Ray, it should probably look like the editor theme */
-
-    /* Let's make the canvas match the APP theme, not the tooltip theme */
-    background: #f0f0f0;
-    overflow: hidden;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-    background-image: radial-gradient(#ccc 1px, transparent 1px);
-    background-size: 20px 20px;
-}
-
-.app-container.dark .preview-canvas {
-    background: #1e1e1e;
-    border: 1px solid #444;
-    background-image: radial-gradient(#333 1px, transparent 1px);
-}
-
-.preview-node {
-    position: absolute;
-    background: white;
-    border: 1px solid #999;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    color: #333;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.app-container.dark .preview-node {
-    background: #333;
-    border: 1px solid #555;
-    color: #fff;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.preview-connection {
-    stroke: #999;
-    stroke-width: 4;
-    fill: none;
-}
-
-.app-container.dark .preview-connection {
-    stroke: #555;
-}
+/* Preview styles removed (preview functionality disabled) */
 
 /* Save Notification */
 .save-notification {

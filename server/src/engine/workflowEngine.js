@@ -96,7 +96,7 @@ class WorkflowEngine {
         this.executeEntryNodesSequentially(workflowId, workflowState, entryNodes, 0);
     }
 
-    // Find entry point nodes: OnStart, OnClick, Input, or nodes with no input connections
+    // Find entry point nodes: OnStart, Input, or nodes with no input connections
     findEntryNodes(nodes, connections, contextNodeId = null) {
         const entryNodes = [];
         const nodesWithInputs = new Set();
@@ -113,18 +113,14 @@ class WorkflowEngine {
             if (node.type === 'onStart') {
                 entryNodes.push({ ...node, _priority: 1, _contextNodeId: contextNodeId });
             }
-            // Priority 2: OnClick nodes (manual trigger, but still entry points)
-            else if (node.type === 'onClick') {
-                entryNodes.push({ ...node, _priority: 2, _contextNodeId: contextNodeId });
-            }
-            // Priority 3: Input nodes (for custom nodes)
+            // Priority 2: Input nodes (for custom nodes)
             else if (node.type === 'input') {
-                entryNodes.push({ ...node, _priority: 3, _contextNodeId: contextNodeId });
+                entryNodes.push({ ...node, _priority: 2, _contextNodeId: contextNodeId });
             }
             // Priority 4: Nodes with no input connections
             else if (!nodesWithInputs.has(String(node.id))) {
                 // Check if node has input ports but no connections
-                const hasInputPort = !['onStart', 'onClick', 'input'].includes(node.type);
+                const hasInputPort = !['onStart', 'input'].includes(node.type);
                 if (hasInputPort) {
                     // This node has input capability but nothing connected - could be orphaned
                     // Only include if it has output connections (otherwise it's truly isolated)
@@ -161,13 +157,16 @@ class WorkflowEngine {
 
         // console.log(`Initializing entry node ${index + 1}/${entryNodes.length}: ${node.type}:${node.id}`);
 
-        // OnStart nodes trigger immediately
-        if (node.type === 'onStart' && !workflowState.triggeredOnStart.has(nodeKey)) {
-            workflowState.triggeredOnStart.add(nodeKey);
-            // console.log(`Triggered onStart node: ${nodeKey}`);
+        // OnStart nodes trigger immediately, but only once per workflow start.
+        if (node.type === 'onStart') {
+            // If this instance has already fired the initial OnStart, skip further onStart nodes.
+            if (!workflowState._onStartFired && !workflowState.triggeredOnStart.has(nodeKey)) {
+                workflowState.triggeredOnStart.add(nodeKey);
+                workflowState._onStartFired = true;
 
-            // Execute the signal chain synchronously
-            await this.executeSignalChain(workflowId, workflowState, node.id, node._contextNodeId);
+                // Execute the signal chain synchronously using a short pulse for initial OnStart
+                await this.executeSignalChain(workflowId, workflowState, node.id, node._contextNodeId, true);
+            }
         }
 
         // Move to next entry node
@@ -178,7 +177,7 @@ class WorkflowEngine {
     }
 
     // Execute signal chain synchronously - follows wires and waits for each node
-    async executeSignalChain(workflowId, workflowState, fromNodeId, contextNodeId = null) {
+    async executeSignalChain(workflowId, workflowState, fromNodeId, contextNodeId = null, isInitial = false) {
         if (!this.workflowInstances.has(workflowId)) return;
 
         // Update activity
@@ -238,8 +237,10 @@ class WorkflowEngine {
                 continue;
             }
 
-            // Wait for signal travel animation (1 second)
-            await this.delay(1000);
+            // Wait for signal travel animation. Use a short pulse for initial OnStart
+            // to avoid long visual signals when the workflow first starts.
+            const travelDelay = isInitial ? 300 : 1000;
+            await this.delay(travelDelay);
 
             // Remove signal from active
             const index = workflowState.activeSignals.findIndex(s => s.id === signal.id);
@@ -316,9 +317,12 @@ class WorkflowEngine {
                         for (const entryNode of internalEntryNodes) {
                             if (entryNode.type === 'onStart') {
                                 const nodeKey = `${node.id}-${entryNode.id}`;
-                                if (!workflowState.triggeredOnStart.has(nodeKey)) {
+                                if (!workflowState.triggeredOnStart.has(nodeKey) && !workflowState._onStartFired) {
                                     workflowState.triggeredOnStart.add(nodeKey);
-                                    await this.executeSignalChain(workflowId, workflowState, entryNode.id, node.id);
+                                    workflowState._onStartFired = true;
+                                    // Internal onStart inside a custom node should also be treated
+                                    // as an initial short pulse when the workflow first starts.
+                                    await this.executeSignalChain(workflowId, workflowState, entryNode.id, node.id, true);
                                 }
                             }
                         }
@@ -402,7 +406,16 @@ class WorkflowEngine {
             }
 
             case 'functionBlock': {
-                // Mark as executed by engine to prevent double-execution from frontend API
+                // If this function block was recently executed by another incoming
+                // signal, skip executing it again to avoid duplicate runs when
+                // multiple incoming signals converge.
+                if (this.wasRecentlyExecuted(workflowId, node.id, contextNodeId)) {
+                    // Skip execution but still continue propagation downstream
+                    await this.executeSignalChain(workflowId, workflowState, node.id, contextNodeId);
+                    break;
+                }
+
+                // Mark as executed to prevent near-term duplicates
                 this.markAsExecuted(workflowId, node.id, contextNodeId);
 
                 // Execute the function block code
@@ -577,16 +590,15 @@ class WorkflowEngine {
 
     // Legacy: Trigger onStart nodes (now handled by initializeWorkflow)
     triggerOnStartNodes(workflowId, workflowState) {
-        // This is now handled by initializeWorkflow for better ordering
-        // Kept for API compatibility - triggers async execution
         const triggerRecursive = (nodesList, contextNodeId = null) => {
             nodesList.forEach(node => {
                 const nodeKey = contextNodeId ? `${contextNodeId}-${node.id}` : node.id;
 
-                if (node.type === 'onStart' && !node.disabled && !workflowState.triggeredOnStart.has(nodeKey)) {
+                if (node.type === 'onStart' && !node.disabled && !workflowState.triggeredOnStart.has(nodeKey) && !workflowState._onStartFired) {
                     workflowState.triggeredOnStart.add(nodeKey);
+                    workflowState._onStartFired = true;
                     // console.log(`Triggered onStart node: ${nodeKey} in workflow ${workflowId}`);
-                    this.executeSignalChain(workflowId, workflowState, node.id, contextNodeId);
+                    this.executeSignalChain(workflowId, workflowState, node.id, contextNodeId, true);
                 }
 
                 // Check nested custom nodes
@@ -601,7 +613,6 @@ class WorkflowEngine {
 
     // Legacy: Propagate signal (now uses executeSignalChain for sync execution)
     propagateSignal(workflowId, workflowState, fromNodeId, contextNodeId = null) {
-        // Trigger async signal chain for manual triggers (onClick, etc.)
         this.executeSignalChain(workflowId, workflowState, fromNodeId, contextNodeId);
     }
 
@@ -614,7 +625,6 @@ class WorkflowEngine {
     startBackgroundProcessing(workflowId, workflowState) {
         // Engine-level background processing is minimal now
         // Most processing is done by the WorkflowInstance itself
-        // This interval is just for additional monitoring if needed
         const interval = setInterval(() => {
             if (!this.workflowInstances.has(workflowId)) {
                 clearInterval(interval);
@@ -650,19 +660,6 @@ class WorkflowEngine {
     restartWorkflow(workflowId, workflowData) {
         this.stopWorkflow(workflowId);
         this.startWorkflow(workflowId, workflowData);
-    }
-
-    // Handle onClick trigger from frontend
-    triggerOnClick(workflowId, nodeId, contextNodeId = null) {
-        const id = String(workflowId);
-        const instance = this.workflowInstances.get(id);
-        if (!instance) return;
-
-        // const nodeKey = contextNodeId ? `${contextNodeId}-${nodeId}` : String(nodeId);
-        // console.log(`OnClick triggered: ${nodeKey}`);
-
-        // Execute the signal chain
-        this.executeSignalChain(workflowId, instance, nodeId, contextNodeId);
     }
 
     // Graceful shutdown: Stop all running workflows and update their state to offline
@@ -705,7 +702,6 @@ class WorkflowEngine {
                 console.error(`Failed to stop workflow ${workflowId}:`, err.message);
             }
         }
-
         // Clear all tracking
         this.workflowInstances.clear();
         this.intervals.clear();

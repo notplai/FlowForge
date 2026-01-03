@@ -8,6 +8,8 @@ let globalWs = null;
 let globalConnecting = false;
 let globalConnected = false;
 
+// Preview functionality removed - no preview-state subscriptions
+
 export function useWorkflowLogs(enabled = true) {
     const reconnectTimeoutRef = useRef(null);
 
@@ -44,6 +46,8 @@ export function useWorkflowLogs(enabled = true) {
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+
+                    // No preview-state handling (preview removed)
 
                     if (data.type === 'console') {
                         const { level, nodeId, workflowId, workflowName, message, unsaved } = data;

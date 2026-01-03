@@ -23,6 +23,9 @@ class WorkflowInstance {
         this.initializedNodes = new Set();
         this.executionQueue = [];
 
+        // Ensure we track whether the initial OnStart has fired for this instance
+        this._onStartFired = false;
+
         // Workflow definition
         this.nodes = workflowData.nodes || [];
         this.connections = workflowData.connections || [];
@@ -170,10 +173,12 @@ class WorkflowInstance {
     markAsExecuted(nodeId, contextNodeId = null) {
         const key = contextNodeId ? `${contextNodeId}-${nodeId}` : String(nodeId);
         this.recentlyExecutedBlocks.set(key, Date.now());
-        // Clear after 500ms to allow re-execution in next wave
+        // Clear after a short debounce window to avoid duplicate executions
+        // when multiple signals converge on the same function block.
+        const DEBOUNCE_MS = 1200;
         setTimeout(() => {
             this.recentlyExecutedBlocks.delete(key);
-        }, 500);
+        }, DEBOUNCE_MS);
     }
 
     /**

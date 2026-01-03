@@ -1,471 +1,297 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { javascript } from '@codemirror/lang-javascript';
-import { python } from '@codemirror/lang-python';
+import { javascript, localCompletionSource, scopeCompletionSource } from '@codemirror/lang-javascript';
+import { python, globalCompletion } from '@codemirror/lang-python';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { githubLight } from '@uiw/codemirror-theme-github';
-import { autocompletion } from '@codemirror/autocomplete';
+import { autocompletion, completeFromList, snippetCompletion } from '@codemirror/autocomplete';
 import '../assets/styles/CodeEditor.css';
 
-// Import completions from separate modules
-import {
-    JS_DOC_COMMENTS,
-    JS_BUILTINS,
-    JS_KEYWORDS,
-    JS_ARRAY_METHODS,
-    JS_STRING_METHODS,
-    PY_DOC_COMMENTS,
-    PY_BUILTINS,
-    PY_KEYWORDS,
-    PY_MODULES,
-    PY_LIST_METHODS,
-    PY_STRING_METHODS,
-    PY_DICT_METHODS,
-    TYPE_ICONS,
-    TYPE_COLORS,
-} from '../utils/completions';
+/**
+ * Custom workflow-specific completions
+ * These are the only "hardcoded" items - specific to the workflow system
+ */
+const WORKFLOW_COMPLETIONS = [
+    snippetCompletion('workflowStorage.get(${key})', {
+        label: 'workflowStorage.get',
+        type: 'method',
+        detail: '(key)',
+        info: 'Get value from workflow storage'
+    }),
+    snippetCompletion('workflowStorage.set(${key}, ${value})', {
+        label: 'workflowStorage.set',
+        type: 'method',
+        detail: '(key, value)',
+        info: 'Set value in workflow storage'
+    }),
+    snippetCompletion('workflowStorage.has(${key})', {
+        label: 'workflowStorage.has',
+        type: 'method',
+        detail: '(key)',
+        info: 'Check if key exists in workflow storage'
+    }),
+    snippetCompletion('workflowStorage.delete(${key})', {
+        label: 'workflowStorage.delete',
+        type: 'method',
+        detail: '(key)',
+        info: 'Delete key from workflow storage'
+    }),
+    snippetCompletion('workflowStorage.clear()', {
+        label: 'workflowStorage.clear',
+        type: 'method',
+        detail: '()',
+        info: 'Clear all workflow storage'
+    }),
+    {
+        label: 'workflowStorage',
+        type: 'variable',
+        detail: 'object',
+        info: 'Workflow-scoped storage (persists during workflow run)'
+    },
+];
 
-function getTypeIcon(type) {
-    return TYPE_ICONS[type] || type.default;
-}
-function getTypeColor(type, isDark) {
-    const colors = isDark ? TYPE_COLORS.dark : TYPE_COLORS.light;
-    return colors[type] || colors.default;
-}
+/**
+ * Common code snippets for JavaScript
+ */
+const JS_SNIPPETS = [
+    snippetCompletion('console.log(${expr})', {
+        label: 'log',
+        type: 'function',
+        detail: 'console.log',
+        info: 'Log to console'
+    }),
+    snippetCompletion('const ${name} = ${value}', {
+        label: 'const',
+        type: 'keyword',
+        detail: 'declaration',
+        info: 'Declare constant variable'
+    }),
+    snippetCompletion('let ${name} = ${value}', {
+        label: 'let',
+        type: 'keyword',
+        detail: 'declaration',
+        info: 'Declare block-scoped variable'
+    }),
+    snippetCompletion('function ${name}(${params}) {\n\t${body}\n}', {
+        label: 'function',
+        type: 'keyword',
+        detail: 'declaration',
+        info: 'Declare function'
+    }),
+    snippetCompletion('const ${name} = (${params}) => {\n\t${body}\n}', {
+        label: 'arrow',
+        type: 'function',
+        detail: 'arrow function',
+        info: 'Declare arrow function'
+    }),
+    snippetCompletion('async function ${name}(${params}) {\n\t${body}\n}', {
+        label: 'async',
+        type: 'keyword',
+        detail: 'async function',
+        info: 'Declare async function'
+    }),
+    snippetCompletion('if (${condition}) {\n\t${body}\n}', {
+        label: 'if',
+        type: 'keyword',
+        detail: 'statement',
+        info: 'If statement'
+    }),
+    snippetCompletion('if (${condition}) {\n\t${then}\n} else {\n\t${else}\n}', {
+        label: 'ifelse',
+        type: 'keyword',
+        detail: 'statement',
+        info: 'If-else statement'
+    }),
+    snippetCompletion('for (let ${i} = 0; ${i} < ${length}; ${i}++) {\n\t${body}\n}', {
+        label: 'for',
+        type: 'keyword',
+        detail: 'loop',
+        info: 'For loop'
+    }),
+    snippetCompletion('for (const ${item} of ${array}) {\n\t${body}\n}', {
+        label: 'forof',
+        type: 'keyword',
+        detail: 'loop',
+        info: 'For-of loop'
+    }),
+    snippetCompletion('for (const ${key} in ${object}) {\n\t${body}\n}', {
+        label: 'forin',
+        type: 'keyword',
+        detail: 'loop',
+        info: 'For-in loop'
+    }),
+    snippetCompletion('while (${condition}) {\n\t${body}\n}', {
+        label: 'while',
+        type: 'keyword',
+        detail: 'loop',
+        info: 'While loop'
+    }),
+    snippetCompletion('try {\n\t${try}\n} catch (${error}) {\n\t${catch}\n}', {
+        label: 'trycatch',
+        type: 'keyword',
+        detail: 'error handling',
+        info: 'Try-catch block'
+    }),
+    snippetCompletion('try {\n\t${try}\n} catch (${error}) {\n\t${catch}\n} finally {\n\t${finally}\n}', {
+        label: 'tryfinally',
+        type: 'keyword',
+        detail: 'error handling',
+        info: 'Try-catch-finally block'
+    }),
+    snippetCompletion('switch (${expr}) {\n\tcase ${value}:\n\t\t${body}\n\t\tbreak;\n\tdefault:\n\t\t${default}\n}', {
+        label: 'switch',
+        type: 'keyword',
+        detail: 'statement',
+        info: 'Switch statement'
+    }),
+    snippetCompletion('class ${Name} {\n\tconstructor(${params}) {\n\t\t${body}\n\t}\n}', {
+        label: 'class',
+        type: 'keyword',
+        detail: 'declaration',
+        info: 'Class declaration'
+    }),
+    snippetCompletion('/** ${description} */', {
+        label: 'jsdoc',
+        type: 'text',
+        detail: 'comment',
+        info: 'JSDoc comment'
+    }),
+    snippetCompletion('/**\n * ${description}\n * @param {${type}} ${name} - ${desc}\n * @returns {${returnType}} ${returnDesc}\n */', {
+        label: 'jsdocfn',
+        type: 'text',
+        detail: 'function comment',
+        info: 'JSDoc function comment'
+    }),
+];
 
-function extractWords(code) {
-    const words = new Set();
-    const wordRegex = /\b([a-zA-Z_][a-zA-Z0-9_]{2,})\b/g;
-    let match;
-    while ((match = wordRegex.exec(code)) !== null) {
-        words.add(match[1]);
-    }
-    return Array.from(words);
-}
+/**
+ * Common code snippets for Python
+ */
+const PY_SNIPPETS = [
+    snippetCompletion('print(${expr})', {
+        label: 'print',
+        type: 'function',
+        detail: 'output',
+        info: 'Print to console'
+    }),
+    snippetCompletion('def ${name}(${params}):\n\t${body}', {
+        label: 'def',
+        type: 'keyword',
+        detail: 'function',
+        info: 'Define function'
+    }),
+    snippetCompletion('async def ${name}(${params}):\n\t${body}', {
+        label: 'asyncdef',
+        type: 'keyword',
+        detail: 'async function',
+        info: 'Define async function'
+    }),
+    snippetCompletion('class ${Name}:\n\tdef __init__(self${, params}):\n\t\t${body}', {
+        label: 'class',
+        type: 'keyword',
+        detail: 'declaration',
+        info: 'Class declaration'
+    }),
+    snippetCompletion('if ${condition}:\n\t${body}', {
+        label: 'if',
+        type: 'keyword',
+        detail: 'statement',
+        info: 'If statement'
+    }),
+    snippetCompletion('if ${condition}:\n\t${then}\nelse:\n\t${else}', {
+        label: 'ifelse',
+        type: 'keyword',
+        detail: 'statement',
+        info: 'If-else statement'
+    }),
+    snippetCompletion('if ${condition}:\n\t${then}\nelif ${condition2}:\n\t${elif}\nelse:\n\t${else}', {
+        label: 'ifelif',
+        type: 'keyword',
+        detail: 'statement',
+        info: 'If-elif-else statement'
+    }),
+    snippetCompletion('for ${item} in ${iterable}:\n\t${body}', {
+        label: 'for',
+        type: 'keyword',
+        detail: 'loop',
+        info: 'For loop'
+    }),
+    snippetCompletion('for ${i}, ${item} in enumerate(${iterable}):\n\t${body}', {
+        label: 'forenum',
+        type: 'keyword',
+        detail: 'loop',
+        info: 'For loop with enumerate'
+    }),
+    snippetCompletion('while ${condition}:\n\t${body}', {
+        label: 'while',
+        type: 'keyword',
+        detail: 'loop',
+        info: 'While loop'
+    }),
+    snippetCompletion('try:\n\t${try}\nexcept ${Exception} as ${e}:\n\t${except}', {
+        label: 'tryexcept',
+        type: 'keyword',
+        detail: 'error handling',
+        info: 'Try-except block'
+    }),
+    snippetCompletion('try:\n\t${try}\nexcept ${Exception} as ${e}:\n\t${except}\nfinally:\n\t${finally}', {
+        label: 'tryfinally',
+        type: 'keyword',
+        detail: 'error handling',
+        info: 'Try-except-finally block'
+    }),
+    snippetCompletion('with ${context} as ${var}:\n\t${body}', {
+        label: 'with',
+        type: 'keyword',
+        detail: 'context manager',
+        info: 'With statement'
+    }),
+    snippetCompletion('lambda ${params}: ${expr}', {
+        label: 'lambda',
+        type: 'keyword',
+        detail: 'anonymous function',
+        info: 'Lambda expression'
+    }),
+    snippetCompletion('[${expr} for ${item} in ${iterable}]', {
+        label: 'listcomp',
+        type: 'keyword',
+        detail: 'list comprehension',
+        info: 'List comprehension'
+    }),
+    snippetCompletion('[${expr} for ${item} in ${iterable} if ${condition}]', {
+        label: 'listcompif',
+        type: 'keyword',
+        detail: 'list comprehension',
+        info: 'List comprehension with condition'
+    }),
+    snippetCompletion('{${key}: ${value} for ${item} in ${iterable}}', {
+        label: 'dictcomp',
+        type: 'keyword',
+        detail: 'dict comprehension',
+        info: 'Dictionary comprehension'
+    }),
+    snippetCompletion('"""${description}"""', {
+        label: 'docstring',
+        type: 'text',
+        detail: 'comment',
+        info: 'Docstring'
+    }),
+    snippetCompletion('"""\n${description}\n\nArgs:\n\t${arg}: ${desc}\n\nReturns:\n\t${returns}\n"""', {
+        label: 'docstringfn',
+        type: 'text',
+        detail: 'function docstring',
+        info: 'Function docstring (Google style)'
+    }),
+];
 
-function extractUserDefinitions(code, language) {
-    const definitions = [];
+/**
+ * Create completion source with workflow-specific items
+ */
+const workflowCompletionSource = completeFromList(WORKFLOW_COMPLETIONS);
 
-    if (language === 'javascript') {
-        // Match const/let/var declarations
-        const varRegex = /(?:const|let|var)\s+(\w+)/g;
-        let match;
-        while ((match = varRegex.exec(code)) !== null) {
-            definitions.push({
-                label: match[1],
-                type: 'variable',
-                description: 'User-defined variable'
-            });
-        }
-
-        // Match function declarations
-        const funcRegex = /function\s+(\w+)\s*\(/g;
-        while ((match = funcRegex.exec(code)) !== null) {
-            definitions.push({
-                label: match[1],
-                type: 'function',
-                description: 'User-defined function'
-            });
-        }
-
-        // Match arrow functions assigned to const/let
-        const arrowRegex = /(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?\(/g;
-        while ((match = arrowRegex.exec(code)) !== null) {
-            if (!definitions.find(d => d.label === match[1])) {
-                definitions.push({
-                    label: match[1],
-                    type: 'function',
-                    description: 'User-defined function'
-                });
-            }
-        }
-    } else if (language === 'python') {
-        // Match variable assignments
-        const varRegex = /^(\w+)\s*=/gm;
-        let match;
-        while ((match = varRegex.exec(code)) !== null) {
-            if (!['def', 'class', 'if', 'for', 'while', 'True', 'False', 'None'].includes(match[1])) {
-                definitions.push({
-                    label: match[1],
-                    type: 'variable',
-                    description: 'User-defined variable'
-                });
-            }
-        }
-
-        // Match function definitions
-        const funcRegex = /def\s+(\w+)\s*\(/g;
-        while ((match = funcRegex.exec(code)) !== null) {
-            definitions.push({
-                label: match[1],
-                type: 'function',
-                description: 'User-defined function'
-            });
-        }
-
-        // Match class definitions
-        const classRegex = /class\s+(\w+)/g;
-        while ((match = classRegex.exec(code)) !== null) {
-            definitions.push({
-                label: match[1],
-                type: 'class',
-                description: 'User-defined class'
-            });
-        }
-    }
-
-    return definitions;
-}
-
-function getAllCompletions(language) {
-    const completions = [];
-    const builtins = language === 'javascript' ? JS_BUILTINS : PY_BUILTINS;
-    const keywords = language === 'javascript' ? JS_KEYWORDS : PY_KEYWORDS;
-
-    // Add all keywords
-    keywords.forEach(kw => {
-        completions.push({
-            label: kw.label,
-            insertText: kw.label,
-            type: kw.type,
-            description: kw.description
-        });
-    });
-
-    // Add all built-in objects/functions
-    Object.entries(builtins).forEach(([name, info]) => {
-        if (info.type === 'function' || info.type === 'class') {
-            completions.push({
-                label: name,
-                insertText: name,
-                type: info.type,
-                signature: info.signature,
-                description: info.description
-            });
-        } else {
-            completions.push({
-                label: name,
-                insertText: name,
-                type: info.type || 'object',
-                description: info.description
-            });
-        }
-    });
-
-    // Add Python modules if Python
-    if (language === 'python') {
-        Object.entries(PY_MODULES).forEach(([name, info]) => {
-            completions.push({
-                label: name,
-                insertText: name,
-                type: 'module',
-                description: info.description
-            });
-        });
-    }
-
-    // Sort completions
-    completions.sort((a, b) => {
-        const typePriority = { keyword: 1, function: 2, method: 3, object: 4, class: 5, module: 6, variable: 7, doc: 8, word: 9 };
-        const aPriority = typePriority[a.type] || 10;
-        const bPriority = typePriority[b.type] || 10;
-        if (aPriority !== bPriority) return aPriority - bPriority;
-        return a.label.localeCompare(b.label);
-    });
-
-    return completions;
-}
-
-function getCompletions(code, cursorPosition, language, isExplicit = false) {
-    // Get the text before cursor
-    const textBeforeCursor = code.substring(0, cursorPosition);
-    const lines = textBeforeCursor.split('\n');
-    const currentLine = lines[lines.length - 1];
-
-    // Check if we're in a doc comment context (after /** or """)
-    const isInJsDoc = language === 'javascript' && /\/\*\*[^*]*$/.test(textBeforeCursor);
-    const isInPyDoc = language === 'python' && /"""[^"]*$/.test(textBeforeCursor);
-    const docComments = language === 'javascript' ? JS_DOC_COMMENTS : PY_DOC_COMMENTS;
-
-    // Check if we're after a dot
-    const dotMatch = currentLine.match(/(\w+)\.\s*(\w*)$/);
-    if (dotMatch) {
-        const objectName = dotMatch[1];
-        const partial = dotMatch[2].toLowerCase();
-
-        // Get object completions
-        const builtins = language === 'javascript' ? JS_BUILTINS : PY_BUILTINS;
-        const obj = builtins[objectName];
-
-        if (obj && obj.methods) {
-            return Object.entries(obj.methods)
-                .filter(([name]) => !partial || name.toLowerCase().startsWith(partial))
-                .map(([name, info]) => ({
-                    label: name,
-                    insertText: name,
-                    type: 'method',
-                    signature: info.signature,
-                    description: info.description,
-                    objectName
-                }));
-        }
-
-        // Check for Python module completions
-        if (language === 'python' && PY_MODULES[objectName]) {
-            const mod = PY_MODULES[objectName];
-            return Object.entries(mod.methods)
-                .filter(([name]) => !partial || name.toLowerCase().startsWith(partial))
-                .map(([name, info]) => ({
-                    label: name,
-                    insertText: name,
-                    type: 'method',
-                    signature: info.signature,
-                    description: info.description,
-                    objectName
-                }));
-        }
-
-        // Generic array/string method suggestions based on common patterns
-        if (language === 'javascript') {
-            // Check if it looks like an array
-            const arrayPattern = new RegExp(`(const|let|var)\\s+${objectName}\\s*=\\s*\\[`);
-            if (arrayPattern.test(code)) {
-                return Object.entries(JS_ARRAY_METHODS)
-                    .filter(([name]) => !partial || name.toLowerCase().startsWith(partial))
-                    .map(([name, info]) => ({
-                        label: name,
-                        insertText: name,
-                        type: 'method',
-                        signature: info.signature,
-                        description: info.description,
-                        objectName
-                    }));
-            }
-            // Check if it looks like a string
-            const stringPattern = new RegExp(`(const|let|var)\\s+${objectName}\\s*=\\s*['"\`]`);
-            if (stringPattern.test(code)) {
-                return Object.entries(JS_STRING_METHODS)
-                    .filter(([name]) => !partial || name.toLowerCase().startsWith(partial))
-                    .map(([name, info]) => ({
-                        label: name,
-                        insertText: name,
-                        type: 'method',
-                        signature: info.signature,
-                        description: info.description,
-                        objectName
-                    }));
-            }
-        }
-
-        if (language === 'python') {
-            // Check if it looks like a list
-            const listPattern = new RegExp(`${objectName}\\s*=\\s*\\[`);
-            if (listPattern.test(code)) {
-                return Object.entries(PY_LIST_METHODS)
-                    .filter(([name]) => !partial || name.toLowerCase().startsWith(partial))
-                    .map(([name, info]) => ({
-                        label: name,
-                        insertText: name,
-                        type: 'method',
-                        signature: info.signature,
-                        description: info.description,
-                        objectName
-                    }));
-            }
-            // Check if it looks like a string
-            const stringPattern = new RegExp(`${objectName}\\s*=\\s*['"]`);
-            if (stringPattern.test(code)) {
-                return Object.entries(PY_STRING_METHODS)
-                    .filter(([name]) => !partial || name.toLowerCase().startsWith(partial))
-                    .map(([name, info]) => ({
-                        label: name,
-                        insertText: name,
-                        type: 'method',
-                        signature: info.signature,
-                        description: info.description,
-                        objectName
-                    }));
-            }
-            // Check if it looks like a dict
-            const dictPattern = new RegExp(`${objectName}\\s*=\\s*\\{`);
-            if (dictPattern.test(code)) {
-                return Object.entries(PY_DICT_METHODS)
-                    .filter(([name]) => !partial || name.toLowerCase().startsWith(partial))
-                    .map(([name, info]) => ({
-                        label: name,
-                        insertText: name,
-                        type: 'method',
-                        signature: info.signature,
-                        description: info.description,
-                        objectName
-                    }));
-            }
-        }
-
-        return [];
-    }
-
-    // Get the current word being typed
-    const wordMatch = currentLine.match(/(\w+)$/);
-    const partial = wordMatch ? wordMatch[1].toLowerCase() : '';
-
-    // If no partial and triggered explicitly, show all completions
-    if (!partial && isExplicit) {
-        return getAllCompletions(language).slice(0, 30);
-    }
-
-    // If no partial and not explicit, return empty
-    if (!partial) return [];
-
-    const completions = [];
-    const builtins = language === 'javascript' ? JS_BUILTINS : PY_BUILTINS;
-    const keywords = language === 'javascript' ? JS_KEYWORDS : PY_KEYWORDS;
-
-    // Add matching keywords
-    keywords
-        .filter(kw => kw.label.toLowerCase().startsWith(partial))
-        .forEach(kw => {
-            completions.push({
-                label: kw.label,
-                insertText: kw.label,
-                type: kw.type,
-                description: kw.description
-            });
-        });
-
-    // Add matching built-in objects/functions
-    Object.entries(builtins)
-        .filter(([name]) => name.toLowerCase().startsWith(partial))
-        .forEach(([name, info]) => {
-            if (info.type === 'function' || info.type === 'class') {
-                completions.push({
-                    label: name,
-                    insertText: name,
-                    type: info.type,
-                    signature: info.signature,
-                    description: info.description
-                });
-            } else {
-                completions.push({
-                    label: name,
-                    insertText: name,
-                    type: info.type || 'object',
-                    description: info.description
-                });
-            }
-        });
-
-    // Add Python modules if applicable
-    if (language === 'python') {
-        Object.entries(PY_MODULES)
-            .filter(([name]) => name.toLowerCase().startsWith(partial))
-            .forEach(([name, info]) => {
-                completions.push({
-                    label: name,
-                    insertText: name,
-                    type: 'module',
-                    description: info.description
-                });
-            });
-    }
-
-    // Add user-defined completions
-    const userDefs = extractUserDefinitions(code, language);
-    userDefs
-        .filter(def => def.label.toLowerCase().startsWith(partial) && def.label.toLowerCase() !== partial)
-        .forEach(def => {
-            if (!completions.find(c => c.label === def.label)) {
-                completions.push(def);
-            }
-        });
-
-    // Add word recognition (words from code that aren't already added)
-    const words = extractWords(code);
-    words
-        .filter(word => word.toLowerCase().startsWith(partial) && word.toLowerCase() !== partial)
-        .forEach(word => {
-            if (!completions.find(c => c.label === word)) {
-                completions.push({
-                    label: word,
-                    insertText: word,
-                    type: 'word',
-                    description: 'Word from code'
-                });
-            }
-        });
-
-    // Add doc comment completions if in doc context or starting with @ or :
-    if (isInJsDoc || isInPyDoc || (language === 'javascript' && partial.startsWith('@')) || (language === 'python' && partial.startsWith(':'))) {
-        docComments
-            .filter(doc => doc.label.toLowerCase().includes(partial.toLowerCase()) || partial === '')
-            .forEach(doc => {
-                completions.push({
-                    ...doc,
-                    insertText: doc.insertText.replace(/\$[0-9]/g, '')
-                });
-            });
-    }
-
-    if ((language === 'javascript' && (partial === '/' || currentLine.trim() === '/')) ||
-        (language === 'python' && (partial === '"' || currentLine.trim() === '"'))) {
-        docComments.slice(0, 2).forEach(doc => {
-            completions.push({
-                ...doc,
-                insertText: doc.insertText.replace(/\$[0-9]/g, '')
-            });
-        });
-    }
-
-    completions.sort((a, b) => {
-        const aExact = a.label.toLowerCase().startsWith(partial);
-        const bExact = b.label.toLowerCase().startsWith(partial);
-        if (aExact && !bExact) return -1;
-        if (!aExact && bExact) return 1;
-
-        // Sort by type priority
-        const typePriority = { keyword: 1, function: 2, method: 3, object: 4, class: 5, module: 6, variable: 7, doc: 8, word: 9 };
-        const aPriority = typePriority[a.type] || 10;
-        const bPriority = typePriority[b.type] || 10;
-        if (aPriority !== bPriority) return aPriority - bPriority;
-
-        return a.label.localeCompare(b.label);
-    });
-
-    return completions.slice(0, 20);
-}
-
-const customCompletionSource = (language, code) => (context) => {
-    const pos = context.pos;
-    const word = context.matchBefore(/\w*/);
-    const isExplicit = context.explicit;
-
-    // Allow explicit trigger on empty line
-    if (!isExplicit && (!word || (word.from === word.to))) {
-        return null;
-    }
-
-    const completions = getCompletions(code, pos, language, isExplicit);
-
-    if (completions.length === 0) {
-        return null;
-    }
-
-    return {
-        from: word ? word.from : pos,
-        options: completions.map(c => ({
-            label: c.label,
-            apply: c.insertText,
-            type: c.type,
-            detail: c.signature || '',
-            info: c.description,
-            // Custom rendering with icons
-            // displayLabel: `${getTypeIcon(c.type)}${c.label}`,
-            displayLabel: c.label,
-        })),
-        validFor: /^\w*$/,
-    };
-};
-
+/**
+ * CodeEditor Component using CodeMirror's built-in language intelligence
+ */
 const CodeEditor = ({ value, onChange, language = 'javascript', theme = 'dark' }) => {
     const [size, setSize] = useState({ width: '100%', height: 400 });
     const containerRef = useRef(null);
@@ -473,18 +299,53 @@ const CodeEditor = ({ value, onChange, language = 'javascript', theme = 'dark' }
 
     const extensions = useMemo(() => {
         const langExtensions = [];
+
         if (language === 'javascript') {
+            // Use JavaScript language with built-in completions
             langExtensions.push(javascript({ jsx: true }));
+
+            // Add JavaScript snippets
+            langExtensions.push(
+                autocompletion({
+                    override: [
+                        // Global scope completions (console, Math, JSON, Array, etc.)
+                        scopeCompletionSource(globalThis),
+                        // Local variable completions (variables defined in the code)
+                        localCompletionSource,
+                        // Workflow-specific completions
+                        workflowCompletionSource,
+                        // Code snippets
+                        completeFromList(JS_SNIPPETS),
+                    ],
+                    defaultKeymap: true,
+                    activateOnTyping: true,
+                    icons: true,
+                })
+            );
         } else if (language === 'python') {
+            // Use Python language with built-in completions
             langExtensions.push(python());
+
+            // Add Python snippets
+            langExtensions.push(
+                autocompletion({
+                    override: [
+                        // Built-in global completions from Python language
+                        globalCompletion,
+                        // Workflow-specific completions
+                        workflowCompletionSource,
+                        // Code snippets
+                        completeFromList(PY_SNIPPETS),
+                    ],
+                    defaultKeymap: true,
+                    activateOnTyping: true,
+                    icons: true,
+                })
+            );
         }
-        langExtensions.push(autocompletion({
-            override: [customCompletionSource(language, value)],
-            defaultKeymap: true,
-            activateOnTyping: true,
-        }));
+
         return langExtensions;
-    }, [language, value]);
+    }, [language]);
 
     const selectedTheme = useMemo(() => {
         return theme === 'dark' ? vscodeDark : githubLight;
@@ -548,6 +409,21 @@ const CodeEditor = ({ value, onChange, language = 'javascript', theme = 'dark' }
                 extensions={extensions}
                 theme={selectedTheme}
                 onChange={handleChange}
+                basicSetup={{
+                    lineNumbers: true,
+                    highlightActiveLineGutter: true,
+                    highlightActiveLine: true,
+                    foldGutter: true,
+                    dropCursor: true,
+                    allowMultipleSelections: true,
+                    indentOnInput: true,
+                    bracketMatching: true,
+                    closeBrackets: true,
+                    autocompletion: false, // We handle this ourselves
+                    rectangularSelection: true,
+                    crosshairCursor: false,
+                    highlightSelectionMatches: true,
+                }}
                 style={{
                     height: '100%',
                     flex: 1,

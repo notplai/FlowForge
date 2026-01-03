@@ -20,7 +20,7 @@ function App() {
     setKeybinds: handleSetKeybinds, setSystemSettings: handleSetSystemSettings } = useSettings()
 
   const { workflows, createWorkflow, updateWorkflow, deleteWorkflow,
-    toggleStatus, refresh } = useWorkflows(systemSettings)
+    toggleStatus, refresh, restartWorkflow } = useWorkflows(systemSettings)
 
   // Connect to workflow logs WebSocket - displays Function Block console output in browser dev tools
   useWorkflowLogs(true)
@@ -98,6 +98,14 @@ function App() {
       await toggleStatus(id)
     } catch (err) {
       console.error('Failed to toggle status:', err)
+    }
+  }
+
+  const handleRestartWorkflow = async (id) => {
+    try {
+      await restartWorkflow(id)
+    } catch (err) {
+      console.error('Failed to restart workflow:', err)
     }
   }
 
@@ -230,6 +238,7 @@ function App() {
             onRename={handleRenameWorkflow}
             onEdit={handleEditWorkflow}
             onToggleStatus={handleToggleStatus}
+            onRestart={handleRestartWorkflow}
             onDelete={handleDeleteWorkflow}
             onOpenCustomNode={handleOpenCustomNode}
             currentEngine={systemSettings.engine}

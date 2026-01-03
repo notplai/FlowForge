@@ -6,6 +6,7 @@ import helpIcon from '../assets/icons/tools/cursors/help.svg';
 import warningIcon from '../assets/icons/warning.svg';
 import saveIcon from '../assets/icons/save.svg';
 import CodeEditor from './CodeEditor';
+// Preview functionality removed
 
 // Helper for string-safe ID comparison (handles number vs string mismatch)
 const idEq = (a, b) => String(a) === String(b);
@@ -14,7 +15,6 @@ const NODE_DOCS = {
     // exampleTest: "A example node box.",
 
     onStart: "It'll start auto when instance online, it's execute once time only.",
-    onClick: "Triggered when the user clicks on this node.",
 
     functionBlock: "Execute custom code in Python or JavaScript.",
 
@@ -92,14 +92,13 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
     const canvasRef = useRef(null);
     const nodeRefs = useRef({});
 
-    // Signal Animation State
-    const [activeSignals, setActiveSignals] = useState([]);
-    const notNodeInputTimes = useRef({});
+    // Tracking nodes that have been visually activated by recent signals
     const activatedNodes = useRef(new Set());
-    const simulationTime = useRef(Date.now());
-    const signalAnimationRef = useRef(null);
-    const processedSignals = useRef(new Set());
-    const executedFunctionBlocks = useRef(new Set());
+    // Tracking last input times for NOT nodes (visualization debounce)
+    const notNodeInputTimes = useRef({});
+
+    // Signal Animation State (visualization only - logic runs on server)
+    const [activeSignals, setActiveSignals] = useState([]);
     const lastLoadedId = useRef(null);
 
     // Load Custom Nodes from Server
@@ -248,55 +247,8 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
         }
     }, [workflow, customNode, customNodeTemplates, hasLoaded, hydrateCustomNodes]);
 
-    // Hydrate runtime state from backend (One-time sync on load)
-    useEffect(() => {
-        if (hasLoaded && workflow?.runtime && workflow.status === 'Online') {
-            const now = Date.now();
-
-            // Hydrate Signals (Visuals)
-            if (workflow.runtime.signals) {
-                const hydratedSignals = workflow.runtime.signals.map(s => ({
-                    id: s.id,
-                    connectionId: s.connectionId,
-                    progress: s.progress,
-                    contextNodeId: s.contextNodeId,
-                    startTime: now - (s.progress * 1000) // Reverse-engineer start time for smooth animation
-                }));
-
-                setActiveSignals(prev => {
-                    // Avoid duplicates
-                    const existingIds = new Set(prev.map(s => s.id));
-                    const newSignals = hydratedSignals.filter(s => !existingIds.has(s.id));
-                    return [...prev, ...newSignals];
-                });
-            }
-
-            // Hydrate Processing Nodes
-            // If a node is sleeping on backend, we set a local timeout to trigger its output when done.
-            if (workflow.runtime.processingNodes) {
-                workflow.runtime.processingNodes.forEach(p => {
-                    if (p.type === 'wait' && p.remainingTime > 0) {
-                        // Set a timeout to trigger the signal locally when the backend wait finishes
-                        setTimeout(() => {
-                            // We use a function ref or similar if we needed latest state, 
-                            // but here we assume nodes/connections don't change drastically during this wait.
-                            // We need to find the node to ensure it still exists/enabled
-                            const currentNode = nodes.find(n => idEq(n.id, p.nodeId));
-                            if (currentNode && !currentNode.disabled) {
-                                triggerSignal(p.nodeId, p.contextNodeId);
-                            }
-                        }, p.remainingTime);
-                    }
-                });
-            }
-
-            // Sync OnStart Triggers
-            // Prevent OnStart nodes from firing again if they already fired on backend
-            if (workflow.runtime.triggeredOnStart) {
-                workflow.runtime.triggeredOnStart.forEach(id => triggeredOnStartNodes.current.add(id));
-            }
-        }
-    }, [hasLoaded, workflow]); // Run when hasLoaded becomes true and workflow is available
+    // Runtime state is now handled by the dedicated sync effects above
+    // No longer need to hydrate signals/processing nodes manually here
 
     // When editing a custom node, update inputs/outputs when internal input/output nodes change
     useEffect(() => {
@@ -399,567 +351,95 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
         };
     };
 
+    // Signal visualization effect - renders signals from backend state only
+    // All node logic execution happens on the server; frontend only visualizes
     useEffect(() => {
         let animationFrameId;
+        const SIGNAL_DURATION = 300; // How long signals stay visible (ms)
 
         const animateSignals = () => {
-            simulationTime.current += 16; // Advance simulation time by ~1 frame (16ms)
+            const now = Date.now();
+
             setActiveSignals(prevSignals => {
-                const nextSignals = [];
-                const now = simulationTime.current;
-
-                // Track which wires should be active this frame
-                const activeWireIds = new Set();
-
-                // Clean up old processed signals (older than 100ms)
-                const oldIds = Array.from(processedSignals.current).filter(id => {
-                    // Extract timestamp from id (signals use Date.now() + Math.random())
-                    const timestamp = Math.floor(id);
-                    return now - timestamp > 100;
+                // Filter out expired signals
+                return prevSignals.filter(signal => {
+                    const age = now - (signal.startTime || 0);
+                    return age < SIGNAL_DURATION;
                 });
-                oldIds.forEach(id => processedSignals.current.delete(id));
-
-                // Process existing signals
-                prevSignals.forEach(signal => {
-                    const signalAge = now - (signal.startTime || 0);
-
-                    // Keep signal visible for 50ms for visual feedback (rapid signal)
-                    if (signalAge < 50) {
-                        nextSignals.push(signal);
-                        activeWireIds.add(signal.connectionId);
-
-                        // Mark NOT nodes receiving signals as suppressed
-                        let connection = connections.find(c => connectionKey(c) === signal.connectionId);
-                        let contextNode = null;
-
-                        if (!connection && signal.contextNodeId) {
-                            const findContext = (nodesList) => {
-                                for (const n of nodesList) {
-                                    if (idEq(n.id, signal.contextNodeId)) return n;
-                                    if (n.type === 'custom' && n.internalNodes) {
-                                        const found = findContext(n.internalNodes);
-                                        if (found) return found;
-                                    }
-                                }
-                                return null;
-                            };
-                            contextNode = findContext(nodes);
-                            if (contextNode && contextNode.internalConnections) {
-                                connection = contextNode.internalConnections.find(c => connectionKey(c) === signal.connectionId);
-                            }
-                        }
-
-                        if (connection) {
-                            let targetNode = null;
-                            if (contextNode) {
-                                targetNode = contextNode.internalNodes?.find(n => idEq(n.id, connection.to));
-                            } else {
-                                targetNode = nodes.find(n => idEq(n.id, connection.to));
-                            }
-
-                            if (targetNode?.type === 'not') {
-                                const key = contextNode ? `${contextNode.id}-${targetNode.id}` : String(targetNode.id);
-                                notNodeInputTimes.current[key] = now;
-                            }
-                        }
-                    }
-
-                    // Process signal arrival
-                    if (!processedSignals.current.has(signal.id) && signal.progress >= 1) {
-                        processedSignals.current.add(signal.id);
-
-                        // Find connection
-                        let connection = connections.find(c => connectionKey(c) === signal.connectionId);
-                        let contextNode = null;
-
-                        if (!connection && signal.contextNodeId) {
-                            const findContext = (nodesList) => {
-                                for (const n of nodesList) {
-                                    if (idEq(n.id, signal.contextNodeId)) return n;
-                                    if (n.type === 'custom' && n.internalNodes) {
-                                        const found = findContext(n.internalNodes);
-                                        if (found) return found;
-                                    }
-                                }
-                                return null;
-                            };
-                            contextNode = findContext(nodes);
-                            if (contextNode && contextNode.internalConnections) {
-                                connection = contextNode.internalConnections.find(c => connectionKey(c) === signal.connectionId);
-                            }
-                        }
-
-                        if (connection) {
-                            let targetNode = null;
-                            if (contextNode) {
-                                targetNode = contextNode.internalNodes?.find(n => idEq(n.id, connection.to));
-                            } else {
-                                targetNode = nodes.find(n => idEq(n.id, connection.to));
-                            }
-
-                            if (targetNode && !targetNode.disabled) {
-                                // Handle different node types
-                                if (targetNode.type === 'not') {
-                                    // NOT nodes handled separately - just suppress
-                                } else if (targetNode.type === 'functionBlock') {
-                                    // Create unique key for this function block execution
-                                    const fbKey = contextNode
-                                        ? `${contextNode.id}-${targetNode.id}`
-                                        : String(targetNode.id);
-
-                                    // Skip if already executed in this wave
-                                    if (!executedFunctionBlocks.current.has(fbKey)) {
-                                        executedFunctionBlocks.current.add(fbKey);
-
-                                        setTimeout(() => {
-                                            executedFunctionBlocks.current.delete(fbKey);
-                                        }, 200);
-
-                                        const isSync = targetNode.synchronize !== false;
-                                        const requestBody = {
-                                            nodeId: targetNode.id,
-                                            contextNodeId: contextNode ? contextNode.id : null,
-                                            // Send workflow data for unsaved workflows or offline workflows
-                                            workflowData: workflow.status !== 'Online' ? {
-                                                id: workflow.id,
-                                                name: workflow.name,
-                                                nodes: nodes,
-                                                connections: connections
-                                            } : undefined
-                                        };
-
-                                        if (isSync) {
-                                            fetch(`http://server:3001/api/workflows/${workflow.id}/execute-node`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(requestBody)
-                                            })
-                                                .then(res => res.json())
-                                                .then(data => {
-                                                    if (data.success) {
-                                                        triggerSignal(targetNode.id, contextNode?.id);
-                                                    }
-                                                })
-                                                .catch(err => console.error('Function block error:', err));
-                                        } else {
-                                            fetch(`http://server:3001/api/workflows/${workflow.id}/execute-node`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(requestBody)
-                                            }).catch(err => console.error('Async function block error:', err));
-                                            // Defer to avoid calling setState during setState
-                                            setTimeout(() => triggerSignal(targetNode.id, contextNode?.id), 0);
-                                        }
-                                    }
-                                } else if (targetNode.type === 'wait') {
-                                    setTimeout(() => {
-                                        triggerSignal(targetNode.id, contextNode?.id);
-                                    }, targetNode.sleepTime || 1000);
-                                } else if (targetNode.type === 'custom') {
-                                    if (targetNode.internalNodes && targetNode.internalConnections) {
-                                        const targetHandle = connection.targetHandle;
-                                        let internalInputNode = targetHandle
-                                            ? targetNode.internalNodes.find(n => idEq(n.id, targetHandle))
-                                            : targetNode.internalNodes.find(n => n.type === 'input');
-
-                                        if (internalInputNode) {
-                                            const outgoing = targetNode.internalConnections.filter(c => idEq(c.from, internalInputNode.id));
-                                            outgoing.forEach(conn => {
-                                                nextSignals.push({
-                                                    id: Date.now() + Math.random(),
-                                                    connectionId: connectionKey(conn),
-                                                    progress: 1,
-                                                    startTime: now,
-                                                    contextNodeId: targetNode.id
-                                                });
-                                            });
-                                        }
-                                    }
-                                } else if (targetNode.type === 'output' && contextNode) {
-                                    const findParentContext = (nodesList, childId, parent = null) => {
-                                        for (const n of nodesList) {
-                                            if (idEq(n.id, childId)) return parent;
-                                            if (n.type === 'custom' && n.internalNodes) {
-                                                const found = findParentContext(n.internalNodes, childId, n);
-                                                if (found !== undefined) return found;
-                                            }
-                                        }
-                                        return undefined;
-                                    };
-                                    const parentContext = findParentContext(nodes, contextNode.id);
-
-                                    const exitConns = parentContext
-                                        ? parentContext.internalConnections.filter(c => idEq(c.from, contextNode.id) && idEq(c.sourceHandle, targetNode.id))
-                                        : connections.filter(c => idEq(c.from, contextNode.id) && idEq(c.sourceHandle, targetNode.id));
-
-                                    exitConns.forEach(conn => {
-                                        nextSignals.push({
-                                            id: Date.now() + Math.random(),
-                                            connectionId: connectionKey(conn),
-                                            progress: 1,
-                                            startTime: now,
-                                            contextNodeId: parentContext?.id || null
-                                        });
-                                    });
-                                } else {
-                                    // Standard pass-through nodes - propagate immediately
-                                    const outgoing = contextNode
-                                        ? contextNode.internalConnections.filter(c => idEq(c.from, targetNode.id))
-                                        : connections.filter(c => idEq(c.from, targetNode.id));
-
-                                    outgoing.forEach(conn => {
-                                        nextSignals.push({
-                                            id: Date.now() + Math.random(),
-                                            connectionId: connectionKey(conn),
-                                            progress: 1,
-                                            startTime: now,
-                                            contextNodeId: contextNode?.id || null
-                                        });
-                                    });
-                                }
-                            }
-                        }
-                    }
-                });
-
-                // Global set to track firing nodes across all levels
-                const globalFiringNodes = new Set();
-
-                const processNodeGraph = (nodeList, connList, contextNode, externalActiveInputs = new Set()) => {
-                    // Build connection maps for quick lookup
-                    const incomingMap = new Map(); // nodeId -> array of source nodeIds
-                    const outgoingMap = new Map(); // nodeId -> array of target nodeIds
-                    const connectionMap = new Map(); // nodeId -> array of connections FROM this node
-
-                    nodeList.forEach(n => {
-                        incomingMap.set(String(n.id), []);
-                        outgoingMap.set(String(n.id), []);
-                        connectionMap.set(String(n.id), []);
-                    });
-
-                    connList.forEach(c => {
-                        const fromId = String(c.from);
-                        const toId = String(c.to);
-
-                        if (incomingMap.has(toId)) {
-                            incomingMap.get(toId).push(fromId);
-                        }
-                        if (outgoingMap.has(fromId)) {
-                            outgoingMap.get(fromId).push(toId);
-                        }
-                        if (connectionMap.has(fromId)) {
-                            connectionMap.get(fromId).push(c);
-                        }
-                    });
-
-                    // PRELOAD PHASE: Find entry points (nodes with NO incoming wires)
-                    const entryPoints = nodeList.filter(n => {
-                        if (n.disabled) return false;
-                        const incoming = incomingMap.get(String(n.id)) || [];
-                        return incoming.length === 0;
-                    });
-
-                    // BUILD EXECUTION ORDER: BFS from entry points following wires
-                    const executionOrder = [];
-                    const visited = new Set();
-                    const queue = [...entryPoints];
-
-                    while (queue.length > 0) {
-                        const node = queue.shift();
-                        const nodeId = String(node.id);
-
-                        if (visited.has(nodeId)) continue;
-                        visited.add(nodeId);
-                        executionOrder.push(node);
-
-                        // Follow outgoing wires to discover next nodes
-                        const targets = outgoingMap.get(nodeId) || [];
-                        targets.forEach(targetId => {
-                            if (!visited.has(targetId)) {
-                                const targetNode = nodeList.find(n => idEq(n.id, targetId));
-                                if (targetNode && !targetNode.disabled) {
-                                    queue.push(targetNode);
-                                }
-                            }
-                        });
-                    }
-
-                    // Track which nodes are currently "firing" (outputting signal) in THIS context
-                    const localFiringNodes = new Set();
-
-                    executionOrder.forEach(node => {
-                        const nodeId = String(node.id);
-                        const nodeKey = contextNode ? `${contextNode.id}-${node.id}` : nodeId;
-                        const incoming = incomingMap.get(nodeId) || [];
-                        const outgoingConns = connectionMap.get(nodeId) || [];
-
-                        // Check if any upstream node is firing a signal to this node
-                        const hasUpstreamSignal = incoming.some(srcId => {
-                            const srcKey = contextNode ? `${contextNode.id}-${srcId}` : srcId;
-                            return localFiringNodes.has(srcKey) || globalFiringNodes.has(srcKey);
-                        });
-
-                        // Also check if this node has active wire input from previous frame
-                        const hasActiveWireInput = connList.some(c => {
-                            if (!idEq(c.to, node.id)) return false;
-                            return activeWireIds.has(connectionKey(c));
-                        });
-
-                        // For INPUT nodes inside custom nodes: check if external input is active
-                        const isExternalInputActive = node.type === 'input' && externalActiveInputs.has(String(node.id));
-
-                        const hasInput = hasUpstreamSignal || hasActiveWireInput || isExternalInputActive;
-
-                        if (node.type === 'input') {
-                            // INPUT NODE inside custom node
-                            // Fires if external input handle is receiving signal
-                            if (isExternalInputActive) {
-                                localFiringNodes.add(nodeKey);
-                                globalFiringNodes.add(nodeKey);
-
-                                outgoingConns.forEach(conn => {
-                                    const connKey = connectionKey(conn);
-                                    nextSignals.push({
-                                        id: Date.now() + Math.random(),
-                                        connectionId: connKey,
-                                        progress: 1,
-                                        startTime: now,
-                                        contextNodeId: contextNode?.id || null
-                                    });
-                                    activeWireIds.add(connKey);
-                                });
-                            }
-                        } else if (node.type === 'not') {
-                            // NOT NODE: Inverter logic
-
-                            if (!hasInput) {
-                                // No input → output is ON
-                                localFiringNodes.add(nodeKey);
-                                globalFiringNodes.add(nodeKey);
-
-                                outgoingConns.forEach(conn => {
-                                    const connKey = connectionKey(conn);
-                                    nextSignals.push({
-                                        id: Date.now() + Math.random(),
-                                        connectionId: connKey,
-                                        progress: 1,
-                                        startTime: now,
-                                        contextNodeId: contextNode?.id || null
-                                    });
-                                    activeWireIds.add(connKey);
-                                });
-                            }
-                            // If has input → don't fire (output is OFF)
-                        } else if (node.type === 'or') {
-                            // OR NODE: Output if ANY input is active
-                            if (hasInput) {
-                                localFiringNodes.add(nodeKey);
-                                globalFiringNodes.add(nodeKey);
-
-                                outgoingConns.forEach(conn => {
-                                    const connKey = connectionKey(conn);
-                                    nextSignals.push({
-                                        id: Date.now() + Math.random(),
-                                        connectionId: connKey,
-                                        progress: 1,
-                                        startTime: now,
-                                        contextNodeId: contextNode?.id || null
-                                    });
-                                    activeWireIds.add(connKey);
-                                });
-                            }
-                        } else if (node.type === 'output') {
-                            // OUTPUT NODE inside custom node
-                            // If it receives signal, the custom node's output fires
-                            if (hasInput) {
-                                localFiringNodes.add(nodeKey);
-                                globalFiringNodes.add(nodeKey);
-                                // Don't create internal signals - the parent context handles output
-                            }
-                        } else if (node.type === 'custom') {
-                            // CUSTOM NODE: Dig into internal nodes
-                            // First, determine which internal Input nodes should be active
-                            const internalActiveInputs = new Set();
-
-                            // Check which input handles of this custom node are receiving signals
-                            if (node.internalNodes) {
-                                node.internalNodes.forEach(internalNode => {
-                                    if (internalNode.type === 'input') {
-                                        // Check if there's an incoming connection to this handle
-                                        const hasIncomingSignal = connList.some(c => {
-                                            if (!idEq(c.to, node.id)) return false;
-                                            // Match targetHandle to internal input node id
-                                            const handleMatches = idEq(c.targetHandle, internalNode.id) ||
-                                                (!c.targetHandle && node.internalNodes.filter(n => n.type === 'input').indexOf(internalNode) === 0);
-
-                                            if (!handleMatches) return false;
-
-                                            // Check if the source is firing
-                                            const srcKey = contextNode ? `${contextNode.id}-${c.from}` : String(c.from);
-                                            return localFiringNodes.has(srcKey) || globalFiringNodes.has(srcKey) || activeWireIds.has(connectionKey(c));
-                                        });
-
-                                        if (hasIncomingSignal) {
-                                            internalActiveInputs.add(String(internalNode.id));
-                                        }
-                                    }
-                                });
-                            }
-
-                            // Recursively process internal nodes
-                            if (node.internalNodes && node.internalConnections) {
-                                processNodeGraph(node.internalNodes, node.internalConnections, node, internalActiveInputs);
-                            }
-
-                            // Check if any internal Output node is firing
-                            if (node.internalNodes) {
-                                const anyOutputFiring = node.internalNodes.some(internalNode => {
-                                    if (internalNode.type !== 'output') return false;
-                                    const internalKey = `${node.id}-${internalNode.id}`;
-                                    return globalFiringNodes.has(internalKey);
-                                });
-
-                                if (anyOutputFiring) {
-                                    localFiringNodes.add(nodeKey);
-                                    globalFiringNodes.add(nodeKey);
-
-                                    // Fire signals on outgoing connections
-                                    outgoingConns.forEach(conn => {
-                                        const connKey = connectionKey(conn);
-                                        nextSignals.push({
-                                            id: Date.now() + Math.random(),
-                                            connectionId: connKey,
-                                            progress: 1,
-                                            startTime: now,
-                                            contextNodeId: contextNode?.id || null
-                                        });
-                                        activeWireIds.add(connKey);
-                                    });
-                                }
-                            }
-                        } else if (node.type === 'wait' || node.type === 'functionBlock') {
-                        } else {
-                            // If this node has upstream signal, it fires downstream
-                            if (hasInput) {
-                                localFiringNodes.add(nodeKey);
-                                globalFiringNodes.add(nodeKey);
-
-                                outgoingConns.forEach(conn => {
-                                    const connKey = connectionKey(conn);
-                                    nextSignals.push({
-                                        id: Date.now() + Math.random(),
-                                        connectionId: connKey,
-                                        progress: 1,
-                                        startTime: now,
-                                        contextNodeId: contextNode?.id || null
-                                    });
-                                    activeWireIds.add(connKey);
-                                });
-                            }
-                        }
-                    });
-                };
-
-                processNodeGraph(nodes, connections, null, new Set());
-
-                return nextSignals;
             });
+
             animationFrameId = requestAnimationFrame(animateSignals);
         };
 
-        // Always start the animation loop
         animationFrameId = requestAnimationFrame(animateSignals);
 
         return () => {
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
         };
-    }, [connections, nodes]);
+    }, []);
 
-    const triggerSignal = (nodeId, contextNodeId = null) => {
-        let outgoingConnections = [];
-
-        if (contextNodeId) {
-            // Recursively find context node (it could be deeply nested)
-            const findContextNode = (nodesList) => {
-                for (const n of nodesList) {
-                    if (idEq(n.id, contextNodeId)) return n;
-                    if (n.type === 'custom' && n.internalNodes) {
-                        const found = findContextNode(n.internalNodes);
-                        if (found) return found;
-                    }
-                }
-                return null;
-            };
-            const contextNode = findContextNode(nodes);
-
-            if (contextNode && contextNode.internalConnections) {
-                outgoingConnections = contextNode.internalConnections.filter(c => idEq(c.from, nodeId));
-            }
-        } else {
-            outgoingConnections = connections.filter(c => idEq(c.from, nodeId));
+    // Sync signals from backend runtime state for online workflows
+    useEffect(() => {
+        // Only sync signals when workflow is online and has runtime data
+        if (workflow?.status !== 'Online' && workflow?.status !== 'Idling') {
+            // Offline: clear any stale signals
+            setActiveSignals([]);
+            return;
         }
 
-        // Create instant signals with strong pulse for visual feedback
-        const newSignals = outgoingConnections.map(conn => ({
-            id: Date.now() + Math.random(),
-            connectionId: connectionKey(conn),
-            progress: 1, // Instant - already at destination
-            startTime: simulationTime.current,
-            contextNodeId: contextNodeId,
-            isPulse: true // Strong visual pulse from OnClick
+        if (!workflow?.runtime?.signals) return;
+
+        const now = Date.now();
+        const backendSignals = workflow.runtime.signals || [];
+
+        // Convert backend signals to frontend format
+        const newSignals = backendSignals.map(s => ({
+            id: s.id,
+            connectionId: s.connectionId,
+            progress: s.progress || 1,
+            startTime: now - ((s.progress || 1) * 300), // Estimate start time for smooth display
+            contextNodeId: s.contextNodeId
         }));
 
-        if (newSignals.length > 0) {
-            setActiveSignals(prev => [...prev, ...newSignals]);
-        }
-    };
+        // Merge with existing signals, avoiding duplicates
+        setActiveSignals(prev => {
+            const existingIds = new Set(prev.map(s => s.id));
+            const uniqueNew = newSignals.filter(s => !existingIds.has(s.id));
+            return [...prev, ...uniqueNew];
+        });
+    }, [workflow?.runtime?.signals, workflow?.status]);
 
-    const handleNodeClick = (e, node) => {
-        if (node.type === 'onClick' && !node.disabled) {
-            triggerSignal(node.id);
-        }
-    };
+    // Preview-mode subscription removed
 
-    // OnStart Logical
-    const triggeredOnStartNodes = useRef(new Set());
+    // Processing nodes visual state (for wait nodes showing progress)
+    const [processingNodes, setProcessingNodes] = useState([]);
+
+    useEffect(() => {
+        if (workflow?.status === 'Online' || workflow?.status === 'Idling') {
+            setProcessingNodes(workflow?.runtime?.processingNodes || []);
+        }
+        // Don't clear when offline - preview mode handles it
+    }, [workflow?.runtime?.processingNodes, workflow?.status]);
+
+    // Placeholder for node key tracking (used by NOT node visualization)
+    const nodeKey = null;
+
+    // OnStart is handled entirely by the backend now
+    // We just track the status for UI purposes
     const lastWorkflowStatus = useRef(null);
 
     useEffect(() => {
         const currentStatus = workflow?.status;
         const previousStatus = lastWorkflowStatus.current;
 
-        // When workflow transitions to Online from Offline (or undefined/null)
-        if (currentStatus === 'Online' && previousStatus !== 'Online') {
-            // Clear previous triggers on fresh start
-            triggeredOnStartNodes.current.clear();
-
-            // Sync with backend triggers if available (Initial Load of running workflow)
-            if (workflow?.runtime?.triggeredOnStart) {
-                workflow.runtime.triggeredOnStart.forEach(id => triggeredOnStartNodes.current.add(id));
-            }
-
-            const triggerRecursive = (nodesList, contextNodeId = null) => {
-                nodesList.forEach(node => {
-                    const nodeKey = contextNodeId ? `${contextNodeId}-${node.id}` : node.id;
-                    if (node.type === 'onStart' && !node.disabled && !triggeredOnStartNodes.current.has(nodeKey)) {
-                        triggeredOnStartNodes.current.add(nodeKey);
-                        triggerSignal(node.id, contextNodeId);
-                    } else if (node.type === 'custom' && !node.disabled && node.internalNodes) {
-                        triggerRecursive(node.internalNodes, node.id);
-                    }
-                });
-            };
-            triggerRecursive(nodes);
-        }
-
-        // When workflow goes Offline, clear the triggers for next start
+        // When workflow goes Offline, we could clear any visual state if needed
         if (currentStatus === 'Offline' && previousStatus === 'Online') {
-            triggeredOnStartNodes.current.clear();
+            setActiveSignals([]);
+            setProcessingNodes([]);
         }
 
-        // Update last status
         lastWorkflowStatus.current = currentStatus;
-    }, [workflow?.status, nodes]);
+    }, [workflow?.status]);
 
     const handleSave = useCallback(async () => {
         if (customNode) {
@@ -1348,7 +828,6 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
         // if (type === 'exampleTest') label = 'Example Node';
 
         if (type === 'onStart') label = 'OnStart';
-        else if (type === 'onClick') label = 'OnClick';
         else if (type === 'wait') label = 'Wait';
         else if (type === 'functionBlock') label = 'Function Block';
 
@@ -1498,7 +977,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
             } else {
                 // Fallback estimates
                 const isIO = ['input', 'output'].includes(n.type);
-                const isCompact = ['onStart', 'onClick', 'not', 'or'].includes(n.type);
+                const isCompact = ['onStart', 'not', 'or'].includes(n.type);
 
                 if (isIO) {
                     w = 120;
@@ -1806,7 +1285,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                 } else {
                     // Fallback to estimated sizes
                     const isIO = ['input', 'output'].includes(n.type);
-                    const isCompact = ['onStart', 'onClick', 'not', 'or'].includes(n.type);
+                    const isCompact = ['onStart', 'not', 'or'].includes(n.type);
 
                     if (isIO) {
                         nodeW = 120;
@@ -1832,7 +1311,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                 if (!fromNode || !toNode) return false;
 
                 // Calculate connection points (same Logical as rendering)
-                const isCompactFrom = ['onStart', 'onClick', 'not', 'or'].includes(fromNode.type);
+                const isCompactFrom = ['onStart', 'not', 'or'].includes(fromNode.type);
                 const fromWidth = (['input', 'output'].includes(fromNode.type) ? 120 : (isCompactFrom ? 150 : 200));
                 const x1 = fromNode.x + fromWidth - 16;
 
@@ -2250,8 +1729,8 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
 
                                 const connKey = connectionKey(conn);
 
-                                const isCompactFrom = ['onStart', 'onClick', 'not', 'or'].includes(fromNode.type);
-                                const isCompactTo = ['onStart', 'onClick', 'not', 'or'].includes(toNode.type);
+                                const isCompactFrom = ['onStart', 'not', 'or'].includes(fromNode.type);
+                                const isCompactTo = ['onStart', 'not', 'or'].includes(toNode.type);
 
                                 const fromWidth = (['input', 'output'].includes(fromNode.type) ? 120 : (isCompactFrom ? 150 : 200));
                                 const x1 = fromNode.x + fromWidth - 16;
@@ -2354,7 +1833,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                 (() => {
                                     const fromNode = nodes.find(n => idEq(n.id, connectingNodeId));
                                     if (!fromNode) return null;
-                                    const isCompact = ['onStart', 'onClick', 'not', 'or'].includes(fromNode.type);
+                                    const isCompact = ['onStart', 'not', 'or'].includes(fromNode.type);
 
                                     const x1 = fromNode.x + (['input', 'output'].includes(fromNode.type) ? 120 : (isCompact ? 150 : 200)) - 16;
                                     let y1 = fromNode.y + 62;
@@ -2504,7 +1983,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                         <span className="io-label">{node.inputLabel || 'Input'}</span>
                                                     </div>
                                                 )
-                                            ) : (node.type !== 'onStart' && node.type !== 'onClick' && node.type !== 'input') && (
+                                            ) : (node.type !== 'onStart' && node.type !== 'input') && (
                                                 <div className="io-port-wrapper">
                                                     <div
                                                         className="node-port input"
@@ -2562,7 +2041,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                             null
                                         ) : node.type === 'wait' ? (
                                             `sleeping for ${node.sleepTime || 1000} milliseconds`
-                                        ) : (['input', 'output', 'onStart', 'onClick', 'not', 'or'].includes(node.type)) ? (
+                                        ) : (['input', 'output', 'onStart', 'not', 'or'].includes(node.type)) ? (
                                             null
                                         ) : 'Content'}
                                     </div>
@@ -2597,7 +2076,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                             type = 'custom';
                         }
 
-                        const isCompact = ['onStart', 'onClick', 'not', 'or'].includes(type);
+                        const isCompact = ['onStart', 'not', 'or'].includes(type);
                         const width = ['input', 'output'].includes(type) ? 120 : (isCompact ? 150 : 200);
 
                         return (
@@ -2617,12 +2096,11 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                 {type !== 'input' && type !== 'output' && (
                                     <div className="node-header">
                                         {type === 'onStart' ? 'OnStart' :
-                                            type === 'onClick' ? 'OnClick' :
-                                                type === 'wait' ? 'Wait' :
-                                                    type === 'functionBlock' ? 'Function Block' :
-                                                        type === 'not' ? 'NOT Node' :
-                                                            type === 'or' ? 'OR Node' :
-                                                                type === 'custom' ? (template?.name || 'Custom Node') : 'Node'}
+                                            type === 'wait' ? 'Wait' :
+                                                type === 'functionBlock' ? 'Function Block' :
+                                                    type === 'not' ? 'NOT Node' :
+                                                        type === 'or' ? 'OR Node' :
+                                                            type === 'custom' ? (template?.name || 'Custom Node') : 'Node'}
                                     </div>
                                 )}
                                 {(type === 'input' || type === 'output') && (
@@ -2659,7 +2137,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                         <span className="io-label">{template.inputLabel || 'Input'}</span>
                                                     </div>
                                                 )
-                                            ) : (type !== 'onStart' && type !== 'onClick' && type !== 'input') && (
+                                            ) : (type !== 'onStart' && type !== 'input') && (
                                                 <div className="io-port-wrapper">
                                                     <div className="node-port input"></div>
                                                     <span className="io-label">Input</span>
@@ -2713,7 +2191,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                             const screenPos = worldToScreen(node.x, node.y);
                             const bounds = canvasRef.current ? canvasRef.current.getBoundingClientRect() : { left: 0, top: 0 };
 
-                            const isCompact = ['onStart', 'onClick', 'not', 'or'].includes(node.type);
+                            const isCompact = ['onStart', 'not', 'or'].includes(node.type);
 
                             return (
                                 <div
@@ -2796,7 +2274,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                             <span className="io-label">{node.inputLabel || 'Input'}</span>
                                                         </div>
                                                     )
-                                                ) : (node.type !== 'onStart' && node.type !== 'onClick' && node.type !== 'input') && (
+                                                ) : (node.type !== 'onStart' && node.type !== 'input') && (
                                                     <div className="io-port-wrapper">
                                                         <div className="node-port input"></div>
                                                         <span className="io-label">Input</span>
@@ -2840,7 +2318,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                 `sleeping for ${node.sleepTime || 1000} milliseconds`
                                             ) : (node.type === 'input' || node.type === 'output') ? (
                                                 ''
-                                            ) : (['onStart', 'onClick', 'not', 'or'].includes(node.type)) ? (
+                                            ) : (['onStart', 'not', 'or'].includes(node.type)) ? (
                                                 null
                                             ) : ''}
                                         </div>
@@ -2924,7 +2402,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                         }
 
                                         // Single Node Context Menu
-                                        const canEdit = !['onStart', 'onClick', 'input', 'output', 'not', 'or'].includes(node.type);
+                                        const canEdit = !['onStart', 'input', 'output', 'not', 'or'].includes(node.type);
                                         return (
                                             <>
                                                 {!node.locked && (
@@ -3485,34 +2963,6 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                     </div>
                                 </div>
                                 <div
-                                    className="node onClick"
-                                    draggable
-                                    style={{ position: 'relative', cursor: 'grab' }}
-                                    onMouseEnter={(e) => handleDocHover(e, 'onClick')}
-                                    onMouseLeave={handleDocLeave}
-                                    onDragStart={(e) => handleSidebarDragStart(e, 'onClick')}
-                                    onDragEnd={(e) => {
-                                        setSidebarDragType(null);
-                                        const currentSidebarWidth = sidebarCollapsed ? 40 : sidebarWidth;
-                                        if (e.clientX > window.innerWidth - currentSidebarWidth) return;
-                                        const worldPos = screenToWorld(e.clientX - (75 * view.zoom), e.clientY - (20 * view.zoom));
-                                        addNode(worldPos.x, worldPos.y, 'onClick');
-                                    }}
-                                >
-                                    <div className="node-header">OnClick</div>
-                                    <div className="node-body">
-                                        <div className="node-ports-row">
-                                            <div className="node-io-section inputs"></div>
-                                            <div className="node-io-section outputs">
-                                                <div className="io-port-wrapper right">
-                                                    <span className="io-label">Output</span>
-                                                    <div className="node-port output"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div
                                     className="node"
                                     draggable
                                     style={{ position: 'relative', cursor: 'grab' }}
@@ -3916,7 +3366,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
                                     internalNodes.forEach(n => {
-                                        const isCompact = ['onStart', 'onClick', 'not', 'or'].includes(n.type);
+                                        const isCompact = ['onStart', 'not', 'or'].includes(n.type);
                                         const w = ['input', 'output'].includes(n.type) ? 120 : (isCompact ? 150 : 200);
                                         const h = 50;
 
@@ -3953,7 +3403,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                         const toNode = internalNodes.find(n => n.id === conn.to);
                                                         if (!fromNode || !toNode) return null;
 
-                                                        const isCompactFrom = ['onStart', 'onClick', 'not', 'or'].includes(fromNode.type);
+                                                        const isCompactFrom = ['onStart', 'not', 'or'].includes(fromNode.type);
                                                         const widthFrom = ['input', 'output'].includes(fromNode.type) ? 120 : (isCompactFrom ? 150 : 200);
 
                                                         // Simple port calculation (Center-ish)
@@ -3985,7 +3435,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
 
                                                 {/* Nodes */}
                                                 {internalNodes.map(node => {
-                                                    const isCompact = ['onStart', 'onClick', 'not', 'or'].includes(node.type);
+                                                    const isCompact = ['onStart', 'not', 'or'].includes(node.type);
                                                     const width = ['input', 'output'].includes(node.type) ? 120 : (isCompact ? 150 : 200);
 
                                                     return (
@@ -4030,7 +3480,7 @@ function Editor({ workflow, customNode, onBack, onSave, keybinds, editorSettings
                                                                                     <span className="io-label">B</span>
                                                                                 </div>
                                                                             </>
-                                                                        ) : (node.type !== 'onStart' && node.type !== 'onClick' && node.type !== 'input') && (
+                                                                        ) : (node.type !== 'onStart' && node.type !== 'input') && (
                                                                             <div className="io-port-wrapper">
                                                                                 <div className="node-port input"></div>
                                                                                 <span className="io-label">In</span>

@@ -5,7 +5,6 @@ export const idEq = (a, b) => String(a) === String(b);
 export const NODE_DOCS = {
     exampleTest: "A example node box.",
     onStart: "It'll start auto when instance online, it's execute once time only.",
-    onClick: "Triggered when the user clicks on this node.",
     functionBlock: "Execute custom code in Python or JavaScript.",
     wait: "Pauses the execution for a specified amount of time.",
     not: "Inverts the boolean value of the input.",
@@ -139,13 +138,13 @@ export function generateRandomName() {
 
 // Check if node can be edited
 export function canEditNode(node) {
-    return !['onStart', 'onClick', 'input', 'output', 'not', 'or'].includes(node?.type);
+    return !['onStart', 'input', 'output', 'not', 'or'].includes(node?.type);
 }
 
 // Get node dimensions
 export function getNodeDimensions(node) {
     const isIO = ['input', 'output'].includes(node.type);
-    const isCompact = ['onStart', 'onClick', 'not', 'or'].includes(node.type);
+    const isCompact = ['onStart', 'not', 'or'].includes(node.type);
 
     if (isIO) {
         return { width: 120, height: 100 };

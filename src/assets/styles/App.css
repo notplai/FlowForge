@@ -1063,19 +1063,7 @@ input:checked+.slider:before {
   background: rgba(255, 68, 68, 0.1);
 }
 
-/* Node preview in canvas style */
-.custom-node-preview {
-  padding: 20px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: #f8f9fa;
-  min-height: 180px;
-}
-
-.app-container.dark .custom-node-preview {
-  background: #1e1e1e;
-}
+/* Preview styles removed */
 
 .node-shape {
   background: #3a3a3a;

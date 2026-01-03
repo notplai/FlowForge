@@ -85,11 +85,27 @@ export function useWorkflows(systemSettings) {
                 return prev;
             });
 
+            // If not found locally (stale list), refresh from backend once
+            if (!currentWorkflow) {
+                try {
+                    const all = await workflowsAPI.getAll(false);
+                    currentWorkflow = all.find(w => w.id === id);
+                    // Update local cache with fresh data
+                    if (all && all.length) {
+                        const normalizedData = all.map(w => ({ ...w, status: w.status || 'Offline', engine: w.engine || 'json' }));
+                        setWorkflows(normalizedData);
+                    }
+                } catch (err) {
+                    console.error('Failed to refresh workflows before toggling status:', err);
+                }
+            }
+
             if (!currentWorkflow) return;
 
-            const isOnline = currentWorkflow.status === 'Online';
-            const targetStatus = isOnline ? 'Offline' : 'Online';
-            const intermediateStatus = isOnline ? 'Stopping' : 'Preparing';
+            // Both 'Online' and 'Idling' are running states that should be stopped
+            const isRunning = currentWorkflow.status === 'Online' || currentWorkflow.status === 'Idling';
+            const targetStatus = isRunning ? 'Offline' : 'Online';
+            const intermediateStatus = isRunning ? 'Stopping' : 'Preparing';
 
             // Mark as transitioning to prevent polling from overwriting status
             transitioningIds.current.add(id);
@@ -130,6 +146,80 @@ export function useWorkflows(systemSettings) {
             transitioningIds.current.delete(id);
         }
     }, [updateWorkflow]);
+
+    const restartWorkflow = useCallback(async (id) => {
+        try {
+            // Get current workflow
+            let currentWorkflow;
+            setWorkflows(prev => {
+                currentWorkflow = prev.find(w => w.id === id);
+                return prev;
+            });
+
+            // If not found locally (stale list), refresh from backend once
+            if (!currentWorkflow) {
+                try {
+                    const all = await workflowsAPI.getAll(false);
+                    currentWorkflow = all.find(w => w.id === id);
+                    // Update local cache with fresh data
+                    if (all && all.length) {
+                        const normalizedData = all.map(w => ({ ...w, status: w.status || 'Offline', engine: w.engine || 'json' }));
+                        setWorkflows(normalizedData);
+                    }
+                } catch (err) {
+                    console.error('Failed to refresh workflows before restarting:', err);
+                }
+            }
+
+            if (!currentWorkflow) return;
+
+            // Only restart if currently running
+            const isRunning = currentWorkflow.status === 'Online' || currentWorkflow.status === 'Idling';
+            if (!isRunning) return;
+
+            // Mark as transitioning
+            transitioningIds.current.add(id);
+
+            // Show Stopping state
+            setWorkflows(prev => prev.map(w =>
+                w.id === id ? {
+                    ...w,
+                    status: 'Stopping',
+                    runtime: w.runtime ? { ...w.runtime, status: 'Stopping' } : undefined
+                } : w
+            ));
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Show Preparing state
+            setWorkflows(prev => prev.map(w =>
+                w.id === id ? {
+                    ...w,
+                    status: 'Preparing',
+                    runtime: w.runtime ? { ...w.runtime, status: 'Preparing' } : undefined
+                } : w
+            ));
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Send restart request to backend (with _restart flag)
+            await workflowsAPI.update(id, { status: 'Online', _restart: true });
+
+            // Update UI to Online
+            setWorkflows(prev => prev.map(w =>
+                w.id === id ? {
+                    ...w,
+                    status: 'Online',
+                    runtime: w.runtime ? { ...w.runtime, status: 'Online' } : undefined
+                } : w
+            ));
+        } catch (err) {
+            console.error('Failed to restart workflow:', err);
+            throw err;
+        } finally {
+            transitioningIds.current.delete(id);
+        }
+    }, []);
 
     // Stop workflows when engine changes
     useEffect(() => {
@@ -172,6 +262,8 @@ export function useWorkflows(systemSettings) {
         createWorkflow,
         updateWorkflow,
         deleteWorkflow,
-        toggleStatus
+        toggleStatus,
+        restartWorkflow,
+        setWorkflows
     };
 }

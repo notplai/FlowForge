@@ -7,7 +7,7 @@ import instancesIcon from '../assets/icons/instances.svg';
 import customNodesIcon from '../assets/icons/custom-nodes.svg';
 import questionIcon from '../assets/icons/question.svg';
 
-function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onOpen, onRename, onEdit, onToggleStatus, onDelete, onOpenCustomNode, currentEngine, onRefresh }) {
+function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onOpen, onRename, onEdit, onToggleStatus, onRestart, onDelete, onOpenCustomNode, currentEngine, onRefresh }) {
     const [showDropdown, setShowDropdown] = useState(false);
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [shakingId, setShakingId] = useState(null);
@@ -233,6 +233,12 @@ function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onO
     const handleStatus = (e, id) => {
         e.stopPropagation();
         onToggleStatus(id);
+        setActiveMenuId(null);
+    };
+
+    const handleRestart = (e, id) => {
+        e.stopPropagation();
+        onRestart(id);
         setActiveMenuId(null);
     };
 
@@ -501,8 +507,11 @@ function Workflows({ workflows, recentTemplates, onCreate, onSelectTemplate, onO
                                                     <div className="card-menu-dropdown">
                                                         <div className="menu-item" onClick={(e) => openEditModal(e, workflow.id)}>Edit Instance</div>
                                                         <div className="menu-item" onClick={(e) => handleStatus(e, workflow.id)}>
-                                                            {workflow.status === 'Online' ? 'Shutdown' : 'Start'}
+                                                            {(workflow.status === 'Online' || workflow.status === 'Idling') ? 'Stop' : 'Start'}
                                                         </div>
+                                                        {(workflow.status === 'Online' || workflow.status === 'Idling') && (
+                                                            <div className="menu-item" onClick={(e) => handleRestart(e, workflow.id)}>Restart</div>
+                                                        )}
                                                         <div className="menu-item delete" onClick={(e) => handleDelete(e, workflow.id)}>Delete</div>
                                                     </div>
                                                 )}
